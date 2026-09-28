@@ -409,6 +409,12 @@ install_base_tools() {
     run_task "Memasang paket utilitas pelengkap" \
         "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' software-properties-common fail2ban apt-transport-https >> ${LOG_FILE} 2>&1 || true"
     
+    # 4. Paket gpiod (Khusus Armbian)
+    if [ "$IS_ARMBIAN" = true ] || [ -f /etc/armbian-release ]; then
+        run_task "Memasang paket utilitas hardware gpiod (khusus Armbian)" \
+            "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' gpiod >> ${LOG_FILE} 2>&1 || true"
+    fi
+
     # Konfigurasi Git untuk stabilitas koneksi & shallow fetch hemat bandwidth
     git config --global http.postBuffer 524288000 2>/dev/null || true
     git config --global http.version HTTP/1.1 2>/dev/null || true
@@ -1023,6 +1029,41 @@ EOF
 
     # Crontab Laravel Scheduler (Menggunakan direktori sistem /etc/cron.d/ yang stabil & bebas error pipe)
     run_task "Memasang penjadwal otomatis Crontab Laravel" "echo '* * * * * ${WEB_USER} cd ${APP_DIR} && php artisan schedule:run >> /dev/null 2>&1' > /etc/cron.d/absen-scheduler && chmod 644 /etc/cron.d/absen-scheduler"
+
+    # Khusus Armbian: Set GPIO 73=0 saat startup boot (gpioset -c gpiochip1 73=0)
+    if [ "$IS_ARMBIAN" = true ] || [ -f /etc/armbian-release ]; then
+        log_info "Mengonfigurasi auto-startup GPIO (gpioset -c gpiochip1 73=0) khusus Armbian..."
+
+        cat << 'EOF' > /etc/systemd/system/armbian-gpio.service
+[Unit]
+Description=Armbian GPIO Init Service (gpioset -c gpiochip1 73=0)
+DefaultDependencies=no
+After=sys-subsystem-gpio.devices basic.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'command -v gpioset >/dev/null 2>&1 && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0) || true'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        # Cadangan via /etc/rc.local
+        if [ ! -f /etc/rc.local ]; then
+            cat << 'EOF' > /etc/rc.local
+#!/bin/sh -e
+exit 0
+EOF
+            chmod +x /etc/rc.local
+        fi
+
+        if ! grep -q 'gpiochip1 73=0' /etc/rc.local; then
+            sed -i '/^exit 0/i command -v gpioset >/dev/null 2>&1 && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0) || true' /etc/rc.local
+        fi
+
+        run_task "Mengaktifkan service startup GPIO Armbian (gpiochip1 73=0)" "systemctl daemon-reload && systemctl enable armbian-gpio.service && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0 || true)"
+    fi
 
     log_success "Nginx VirtualHost, Worker Queue, dan Cron Scheduler berhasil aktif!"
 }
