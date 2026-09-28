@@ -204,7 +204,7 @@ safe_read() {
 }
 
 detect_server_ip() {
-    SERVER_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+    SERVER_IP=$(curl -s4 --connect-timeout 3 --max-time 5 https://ifconfig.me 2>/dev/null || curl -s4 --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
     if [ -z "$SERVER_IP" ]; then
         SERVER_IP="127.0.0.1"
     fi
@@ -535,31 +535,31 @@ EOF
 install_composer_and_go() {
     log_step "[5/11] Menginstal Composer 2 & Golang Engine..."
     export DEBIAN_FRONTEND=noninteractive
+    export COMPOSER_ALLOW_SUPERUSER=1
 
     # Composer
     if ! command -v composer &> /dev/null; then
-        run_task "Mengunduh & memasang Composer 2" "curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php"
+        run_task "Mengunduh & memasang Composer 2" "curl -sS --connect-timeout 10 https://getcomposer.org/installer -o /tmp/composer-setup.php && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php"
     fi
-    log_success "Composer v$(composer --version 2>&1 | head -n1 | awk '{print $3}') terpasang."
+    log_success "Composer 2 terpasang di /usr/local/bin/composer."
 
     # Golang
-    local go_latest_ver
-    go_latest_ver=$(curl -sSL "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1 || echo "go1.23.1")
-    [ -z "$go_latest_ver" ] && go_latest_ver="go1.23.1"
-
+    local go_ver="go1.23.1"
     local need_install_go=true
+
     if command -v /usr/local/go/bin/go &> /dev/null; then
         local current_go
-        current_go=$(/usr/local/go/bin/go version | awk '{print $3}')
-        if [ "$current_go" = "$go_latest_ver" ]; then
+        current_go=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}')
+        if [ -n "$current_go" ]; then
             need_install_go=false
+            log_success "Golang Engine (${current_go}) sudah terpasang."
         fi
     fi
 
     if [ "$need_install_go" = true ]; then
-        local go_archive="${go_latest_ver}.linux-${GO_ARCH}.tar.gz"
+        local go_archive="${go_ver}.linux-${GO_ARCH}.tar.gz"
         local go_url="https://go.dev/dl/${go_archive}"
-        run_task "Mengunduh & mengekstrak Golang ${go_latest_ver} (${GO_ARCH})" "curl -sSL -f '$go_url' -o '/tmp/${go_archive}' && rm -rf /usr/local/go && tar -C /usr/local -xzf '/tmp/${go_archive}' && rm -f '/tmp/${go_archive}' || apt-get install -y golang-go"
+        run_task "Mengunduh & mengekstrak Golang Engine (${go_ver} - ${GO_ARCH})" "curl -sSL -f --connect-timeout 15 '$go_url' -o '/tmp/${go_archive}' && rm -rf /usr/local/go && tar -C /usr/local -xzf '/tmp/${go_archive}' && rm -f '/tmp/${go_archive}' || apt-get install -y golang-go"
     fi
 
     # Setup PATH Go
@@ -689,7 +689,7 @@ install_gowa_whatsapp() {
     # 1. Cari release terbaru dari GitHub API
     log_info "Mencari versi terbaru GOWA di GitHub API..."
     local latest_tag=""
-    latest_tag=$(curl -sSL "https://api.github.com/repos/aldinokemal/go-whatsapp-web-multidevice/releases/latest" 2>/dev/null | grep '"tag_name":' | head -n1 | cut -d '"' -f 4 || echo "")
+    latest_tag=$(curl -sSL --connect-timeout 5 --max-time 10 "https://api.github.com/repos/aldinokemal/go-whatsapp-web-multidevice/releases/latest" 2>/dev/null | grep '"tag_name":' | head -n1 | cut -d '"' -f 4 || echo "")
     
     if [ -z "$latest_tag" ]; then
         latest_tag="v9.5.0"
