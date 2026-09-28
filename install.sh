@@ -77,6 +77,55 @@ log_success() { log " ${ICON_CHECK} ${C_GREEN}$1${C_RESET}"; }
 log_warn()    { log " ${ICON_WARN} ${C_YELLOW}$1${C_RESET}"; }
 log_error()   { log " ${ICON_CROSS} ${C_RED}$1${C_RESET}"; }
 
+# --- Task Runner dengan Spinner Animasi Live Progress ---
+run_task() {
+    local title="$1"
+    local command_str="$2"
+    local pid
+    local spin_chars=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local i=0
+
+    # Catat ke file log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [RUN_TASK] ${title}" >> "${LOG_FILE}" 2>&1
+
+    # Jalankan perintah di background dan redirect output ke log file
+    eval "$command_str" >> "${LOG_FILE}" 2>&1 &
+    pid=$!
+
+    # Sembunyikan kursor jika di terminal
+    [ -t 1 ] && tput civis 2>/dev/null || true
+
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i + 1) % 10 ))
+        if [ -t 1 ]; then
+            printf "\r  ${C_CYAN}${spin_chars[$i]}${C_RESET} ${C_WHITE}%s...${C_RESET}   " "$title"
+        fi
+        sleep 0.1
+    done
+
+    # Kembalikan kursor
+    [ -t 1 ] && tput cnorm 2>/dev/null || true
+
+    wait "$pid"
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        if [ -t 1 ]; then
+            printf "\r  ${ICON_CHECK} ${C_GREEN}%s selesai.${C_RESET}\033[K\n" "$title"
+        else
+            echo "  ✔ $title selesai."
+        fi
+        return 0
+    else
+        if [ -t 1 ]; then
+            printf "\r  ${ICON_CROSS} ${C_RED}%s gagal! Periksa log: ${LOG_FILE}${C_RESET}\033[K\n" "$title"
+        else
+            echo "  ✖ $title gagal! Periksa log: $LOG_FILE"
+        fi
+        return $exit_code
+    fi
+}
+
 # --- Error Handler ---
 handle_error() {
     local exit_code=$?
@@ -331,13 +380,10 @@ install_base_tools() {
     log_step "[1/11] Memperbarui Repository APT & Menginstal Utilitas Dasar..."
     export DEBIAN_FRONTEND=noninteractive
     
-    apt-get update -y >> "${LOG_FILE}" 2>&1
-    apt-get install -y \
-        curl wget git unzip zip tar ca-certificates gnupg \
-        lsb-release apt-transport-https software-properties-common \
-        build-essential ufw cron supervisor fail2ban jq >> "${LOG_FILE}" 2>&1
+    run_task "Sinkronisasi index paket repository APT (apt update)" "apt-get update -y"
+    run_task "Memasang utilitas dasar (curl, git, supervisor, ufw, build-essential)" "apt-get install -y curl wget git unzip zip tar ca-certificates gnupg lsb-release apt-transport-https software-properties-common build-essential ufw cron supervisor fail2ban jq"
     
-    log_success "Paket utilitas dasar & git siap."
+    log_success "Paket utilitas dasar & git siap digunakan."
 }
 
 # --- 2. Install Nginx ---
@@ -346,14 +392,11 @@ install_nginx() {
     export DEBIAN_FRONTEND=noninteractive
 
     if systemctl is-active --quiet apache2 2>/dev/null; then
-        log_warn "Apache2 aktif terdeteksi. Mematikan Apache2..."
-        systemctl stop apache2 >> "${LOG_FILE}" 2>&1 || true
-        systemctl disable apache2 >> "${LOG_FILE}" 2>&1 || true
+        run_task "Menonaktifkan service Apache2 yang bentrok" "systemctl stop apache2 && systemctl disable apache2"
     fi
 
-    apt-get install -y nginx >> "${LOG_FILE}" 2>&1
-    systemctl enable nginx >> "${LOG_FILE}" 2>&1
-    systemctl restart nginx >> "${LOG_FILE}" 2>&1
+    run_task "Mengunduh & memasang Nginx Web Server" "apt-get install -y nginx"
+    run_task "Mengaktifkan & menjalankan daemon Nginx" "systemctl enable nginx && systemctl restart nginx"
 
     local nginx_ver
     nginx_ver=$(nginx -v 2>&1 | awk -F/ '{print $2}')
@@ -368,36 +411,20 @@ install_php() {
     local php_ver="$PHP_DEFAULT_VER"
 
     if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ]; then
-        log_info "Mengunduh GPG Key Sury PHP..."
-        curl -sSLo /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg >> "${LOG_FILE}" 2>&1
+        run_task "Mengunduh GPG Key Sury PHP" "curl -sSLo /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg"
     fi
 
     if [[ "$OS_NAME" == "ubuntu" ]]; then
         if ! grep -q "ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
-            add-apt-repository -y ppa:ondrej/php >> "${LOG_FILE}" 2>&1
+            run_task "Menambahkan PPA Ondrej PHP" "add-apt-repository -y ppa:ondrej/php"
         fi
     else
         echo "deb https://packages.sury.org/php/ ${OS_CODENAME} main" > /etc/apt/sources.list.d/php.list
     fi
 
-    apt-get update -y >> "${LOG_FILE}" 2>&1
+    run_task "Sinkronisasi repository PHP Sury" "apt-get update -y"
 
-    apt-get install -y \
-        php${php_ver}-fpm \
-        php${php_ver}-cli \
-        php${php_ver}-common \
-        php${php_ver}-mysql \
-        php${php_ver}-mbstring \
-        php${php_ver}-bcmath \
-        php${php_ver}-gd \
-        php${php_ver}-zip \
-        php${php_ver}-intl \
-        php${php_ver}-xml \
-        php${php_ver}-curl \
-        php${php_ver}-opcache \
-        php${php_ver}-readline >> "${LOG_FILE}" 2>&1
-
-    apt-get install -y php${php_ver}-pcntl >> "${LOG_FILE}" 2>&1 || true
+    run_task "Memasang paket PHP ${php_ver} FPM, CLI & ekstensi lengkap" "apt-get install -y php${php_ver}-fpm php${php_ver}-cli php${php_ver}-common php${php_ver}-mysql php${php_ver}-mbstring php${php_ver}-bcmath php${php_ver}-gd php${php_ver}-zip php${php_ver}-intl php${php_ver}-xml php${php_ver}-curl php${php_ver}-opcache php${php_ver}-readline php${php_ver}-pcntl"
 
     local fpm_ini="/etc/php/${php_ver}/fpm/php.ini"
     local cli_ini="/etc/php/${php_ver}/cli/php.ini"
@@ -427,12 +454,11 @@ install_php() {
         sed -i 's/^;pm.max_requests = .*/pm.max_requests = 200/' "$fpm_pool"
     fi
 
-    systemctl restart php${php_ver}-fpm >> "${LOG_FILE}" 2>&1
-    systemctl enable php${php_ver}-fpm >> "${LOG_FILE}" 2>&1
+    run_task "Memulai ulang service PHP ${php_ver} FPM" "systemctl restart php${php_ver}-fpm && systemctl enable php${php_ver}-fpm"
 
     local installed_php
     installed_php=$(php -v | head -n1 | awk '{print $2}')
-    log_success "PHP v${installed_php} (FPM & CLI) berhasil diinstal."
+    log_success "PHP v${installed_php} (FPM & CLI) siap digunakan."
 }
 
 # --- 4. Install MariaDB & Buat Database ---
@@ -440,8 +466,7 @@ install_database() {
     log_step "[4/11] Menginstal & Menyiapkan Database MariaDB..."
     export DEBIAN_FRONTEND=noninteractive
 
-    apt-get install -y mariadb-server mariadb-client >> "${LOG_FILE}" 2>&1 || \
-    apt-get install -y default-mysql-server default-mysql-client >> "${LOG_FILE}" 2>&1
+    run_task "Mengunduh & memasang MariaDB Server" "apt-get install -y mariadb-server mariadb-client || apt-get install -y default-mysql-server default-mysql-client"
 
     # Tuning khusus S905X (ramah flash storage & hemat RAM)
     if [ "$IS_AMLOGIC_S905X" = true ]; then
@@ -460,19 +485,17 @@ table_open_cache = 400
 EOF
     fi
 
-    systemctl enable mariadb >> "${LOG_FILE}" 2>&1 || systemctl enable mysql >> "${LOG_FILE}" 2>&1
-    systemctl restart mariadb >> "${LOG_FILE}" 2>&1 || systemctl restart mysql >> "${LOG_FILE}" 2>&1
+    run_task "Memulai ulang & menyalakan daemon MariaDB" "systemctl enable mariadb >> ${LOG_FILE} 2>&1 || systemctl enable mysql >> ${LOG_FILE} 2>&1; systemctl restart mariadb >> ${LOG_FILE} 2>&1 || systemctl restart mysql >> ${LOG_FILE} 2>&1"
 
-    log_info "Membuat database '${DB_NAME}' & user '${DB_USER}'..."
-    mysql -u root <<EOF >> "${LOG_FILE}" 2>&1
+    run_task "Mengonfigurasi database '${DB_NAME}' & pengguna '${DB_USER}'" "mysql -u root <<EOF
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
-EOF
+EOF"
 
-    log_success "Database '${DB_NAME}' dan pengguna '${DB_USER}' berhasil dikonfigurasi."
+    log_success "Database '${DB_NAME}' dan pengguna '${DB_USER}' siap digunakan."
 }
 
 # --- 5. Install Composer & Golang ---
@@ -482,10 +505,7 @@ install_composer_and_go() {
 
     # Composer
     if ! command -v composer &> /dev/null; then
-        local composer_setup="/tmp/composer-setup.php"
-        curl -sS https://getcomposer.org/installer -o "$composer_setup"
-        php "$composer_setup" --install-dir=/usr/local/bin --filename=composer >> "${LOG_FILE}" 2>&1
-        rm -f "$composer_setup"
+        run_task "Mengunduh & memasang Composer 2" "curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php"
     fi
     log_success "Composer v$(composer --version 2>&1 | head -n1 | awk '{print $3}') terpasang."
 
@@ -506,14 +526,7 @@ install_composer_and_go() {
     if [ "$need_install_go" = true ]; then
         local go_archive="${go_latest_ver}.linux-${GO_ARCH}.tar.gz"
         local go_url="https://go.dev/dl/${go_archive}"
-        log_info "Mengunduh Golang ${go_latest_ver} (${GO_ARCH})..."
-        if curl -sSL -f "$go_url" -o "/tmp/${go_archive}"; then
-            rm -rf /usr/local/go
-            tar -C /usr/local -xzf "/tmp/${go_archive}"
-            rm -f "/tmp/${go_archive}"
-        else
-            apt-get install -y golang-go >> "${LOG_FILE}" 2>&1
-        fi
+        run_task "Mengunduh & mengekstrak Golang ${go_latest_ver} (${GO_ARCH})" "curl -sSL -f '$go_url' -o '/tmp/${go_archive}' && rm -rf /usr/local/go && tar -C /usr/local -xzf '/tmp/${go_archive}' && rm -f '/tmp/${go_archive}' || apt-get install -y golang-go"
     fi
 
     # Setup PATH Go
@@ -537,14 +550,11 @@ deploy_web_absen() {
     git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 
     if [ -d "${APP_DIR}/.git" ]; then
-        log_info "Direktori ${APP_DIR} sudah merupakan repositori Git. Menarik update terbaru (git pull)..."
-        cd "${APP_DIR}"
-        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+        run_task "Menarik commit terbaru Web Absen via Git (git pull)" "cd '${APP_DIR}' && (git pull origin main || git pull origin master)"
     else
-        log_info "Melakukan git clone dari ${GIT_REPO} ke ${APP_DIR}..."
         mkdir -p "${APP_DIR}"
         rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
-        git clone "${GIT_REPO}" "${APP_DIR}" >> "${LOG_FILE}" 2>&1
+        run_task "Mengunduh source code Web Absen dari GitHub (${GIT_REPO})" "git clone '${GIT_REPO}' '${APP_DIR}'"
     fi
 
     cd "${APP_DIR}"
@@ -613,29 +623,14 @@ deploy_web_absen() {
 
     # Jalankan Composer
     if [ -f composer.json ]; then
-        log_info "Menjalankan composer install..."
         export COMPOSER_ALLOW_SUPERUSER=1
-        composer install --no-dev --optimize-autoloader --no-interaction >> "${LOG_FILE}" 2>&1 || {
-            log_warn "Composer install selesai dengan beberapa catatan."
-        }
+        run_task "Memasang dependensi PHP (composer install --no-dev)" "composer install --no-dev --optimize-autoloader --no-interaction"
     fi
 
     # Artisan Commands
     if [ -f artisan ]; then
-        log_info "Membuat APP_KEY..."
-        php artisan key:generate --force >> "${LOG_FILE}" 2>&1 || true
-
-        log_info "Menjalankan database migration..."
-        php artisan migrate --force >> "${LOG_FILE}" 2>&1 || {
-            log_warn "Migrasi database selesai (tabel siap)."
-        }
-
-        log_info "Menghubungkan storage link..."
-        php artisan storage:link --force >> "${LOG_FILE}" 2>&1 || true
-
-        log_info "Mengoptimalkan cache konfigurasi..."
-        php artisan optimize:clear >> "${LOG_FILE}" 2>&1 || true
-        php artisan optimize >> "${LOG_FILE}" 2>&1 || true
+        run_task "Menghasilkan APP_KEY & menjalankan migrasi database" "php artisan key:generate --force && php artisan migrate --force"
+        run_task "Membuat storage link & mengoptimalkan cache Laravel" "php artisan storage:link --force && php artisan optimize:clear && php artisan optimize"
     fi
 
     # Set Permissions
@@ -695,43 +690,12 @@ install_gowa_whatsapp() {
     esac
 
     local gowa_url="https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/download/${latest_tag}/${gowa_zip_name}"
-
-    log_info "Mengunduh ${gowa_zip_name}..."
     local tmp_zip="/tmp/${gowa_zip_name}"
     local tmp_extract="/tmp/gowa_extract"
     rm -rf "$tmp_extract" "$tmp_zip"
-    mkdir -p "$tmp_extract"
+    mkdir -p "$tmp_extract" "${WA_DIR}/storages"
 
-    if curl -sSL -f "$gowa_url" -o "$tmp_zip"; then
-        unzip -q -o "$tmp_zip" -d "$tmp_extract"
-
-        # Pindahkan binary ke /usr/local/bin/whatsapp dan direktori kerja /var/www/whatsapp
-        mkdir -p "${WA_DIR}/storages"
-        if [ -f "${tmp_extract}/${gowa_inner_bin}" ]; then
-            cp -f "${tmp_extract}/${gowa_inner_bin}" /usr/local/bin/whatsapp
-            cp -f "${tmp_extract}/${gowa_inner_bin}" "${WA_DIR}/whatsapp"
-        elif [ -f "${tmp_extract}/whatsapp" ]; then
-            cp -f "${tmp_extract}/whatsapp" /usr/local/bin/whatsapp
-            cp -f "${tmp_extract}/whatsapp" "${WA_DIR}/whatsapp"
-        else
-            local found_bin
-            found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.txt" | head -n1)
-            if [ -n "$found_bin" ]; then
-                cp -f "$found_bin" /usr/local/bin/whatsapp
-                cp -f "$found_bin" "${WA_DIR}/whatsapp"
-            fi
-        fi
-
-        chmod +x /usr/local/bin/whatsapp
-        chmod +x "${WA_DIR}/whatsapp" 2>/dev/null || true
-        ln -sf /usr/local/bin/whatsapp /usr/local/bin/gowa
-        rm -rf "$tmp_extract" "$tmp_zip"
-
-        log_success "Binary WhatsApp Gateway terpasang di ${WA_DIR}/whatsapp dan /usr/local/bin/whatsapp!"
-    else
-        log_error "Gagal mengunduh GOWA dari URL: ${gowa_url}"
-        log_info "Instalasi berlanjut. Anda dapat menyalin binary manual ke ${WA_DIR}/whatsapp."
-    fi
+    run_task "Mengunduh & memasang binary WhatsApp Gateway (${latest_tag} - ${ARCH_NAME})" "curl -sSL -f '$gowa_url' -o '$tmp_zip' && unzip -q -o '$tmp_zip' -d '$tmp_extract' && if [ -f '${tmp_extract}/${gowa_inner_bin}' ]; then cp -f '${tmp_extract}/${gowa_inner_bin}' /usr/local/bin/whatsapp && cp -f '${tmp_extract}/${gowa_inner_bin}' '${WA_DIR}/whatsapp'; elif [ -f '${tmp_extract}/whatsapp' ]; then cp -f '${tmp_extract}/whatsapp' /usr/local/bin/whatsapp && cp -f '${tmp_extract}/whatsapp' '${WA_DIR}/whatsapp'; else found_bin=\$(find '$tmp_extract' -type f ! -name '*.md' ! -name '*.txt' | head -n1); [ -n \"\$found_bin\" ] && cp -f \"\$found_bin\" /usr/local/bin/whatsapp && cp -f \"\$found_bin\" '${WA_DIR}/whatsapp'; fi && chmod +x /usr/local/bin/whatsapp '${WA_DIR}/whatsapp' && ln -sf /usr/local/bin/whatsapp /usr/local/bin/gowa && rm -rf '$tmp_extract' '$tmp_zip'"
 
     # 3. Setup direktori & hak akses penyimpanan WhatsApp di /var/www/whatsapp
     mkdir -p "${WA_DIR}/storages"
@@ -758,12 +722,8 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
-    systemctl enable whatsapp.service >> "${LOG_FILE}" 2>&1
-    if [ -f "${WA_DIR}/whatsapp" ] || [ -f /usr/local/bin/whatsapp ]; then
-        systemctl restart whatsapp.service >> "${LOG_FILE}" 2>&1 || true
-        log_success "Service WhatsApp Gateway (whatsapp.service) aktif di port ${WA_PORT}."
-    fi
+    run_task "Mengaktifkan & menyalakan daemon WhatsApp Gateway (whatsapp.service)" "systemctl daemon-reload && systemctl enable whatsapp.service && (systemctl restart whatsapp.service || true)"
+    log_success "Service WhatsApp Gateway (whatsapp.service) aktif di port ${WA_PORT}."
 }
 
 # --- 8. Clone, Build & Setup WhatsApp Bot Go (bot-go) ---
@@ -773,14 +733,11 @@ deploy_bot_wa_go() {
     git config --global --add safe.directory "${BOT_GO_DIR}" 2>/dev/null || true
 
     if [ -d "${BOT_GO_DIR}/.git" ]; then
-        log_info "Direktori ${BOT_GO_DIR} sudah ada. Menarik update terbaru (git pull)..."
-        cd "${BOT_GO_DIR}"
-        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+        run_task "Menarik commit terbaru WhatsApp Bot Go via Git (git pull)" "cd '${BOT_GO_DIR}' && (git pull origin main || git pull origin master)"
     else
-        log_info "Melakukan git clone dari ${BOT_GO_REPO} ke ${BOT_GO_DIR}..."
         mkdir -p "${BOT_GO_DIR}"
         rm -rf "${BOT_GO_DIR:?}"/* "${BOT_GO_DIR:?}"/.[!.]* 2>/dev/null || true
-        git clone "${BOT_GO_REPO}" "${BOT_GO_DIR}" >> "${LOG_FILE}" 2>&1
+        run_task "Mengunduh source code WhatsApp Bot Go dari GitHub" "git clone '${BOT_GO_REPO}' '${BOT_GO_DIR}'"
     fi
 
     cd "${BOT_GO_DIR}"
@@ -821,19 +778,14 @@ SUPERADMIN_WA_ID=
 EOF
 
     # Kompilasi binary Go
-    log_info "Mendownload dependencies Go & meng-compile binary bot_wa..."
     export GOROOT=/usr/local/go
     export GOPATH=$HOME/go
     export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 
-    /usr/local/go/bin/go mod tidy >> "${LOG_FILE}" 2>&1 || true
-    /usr/local/go/bin/go build -o "${BOT_GO_DIR}/bot_wa" main.go >> "${LOG_FILE}" 2>&1
+    run_task "Mengunduh Go module & mengompilasi binary bot_wa (Go Build)" "cd '${BOT_GO_DIR}' && (/usr/local/go/bin/go mod tidy || true) && /usr/local/go/bin/go build -o '${BOT_GO_DIR}/bot_wa' main.go"
 
     if [ -f "${BOT_GO_DIR}/bot_wa" ]; then
         chmod +x "${BOT_GO_DIR}/bot_wa"
-        log_success "Binary WhatsApp Bot Go (bot_wa) berhasil di-compile!"
-    else
-        log_warn "Gagal meng-compile binary bot_wa otomatis. Silakan cek ${LOG_FILE}"
     fi
 
     # Buat Systemd Service untuk Bot WhatsApp Go
@@ -859,12 +811,8 @@ EOF
     # Buat symlink /var/www/bot-wa -> /var/www/bot-go agar bisa diakses kedua nama
     ln -sf "${BOT_GO_DIR}" "${BOT_WA_LINK}"
 
-    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
-    systemctl enable bot_wa.service >> "${LOG_FILE}" 2>&1
-    if [ -f "${BOT_GO_DIR}/bot_wa" ]; then
-        systemctl restart bot_wa.service >> "${LOG_FILE}" 2>&1 || true
-        log_success "Service WhatsApp Bot Go (bot_wa.service) aktif di port ${BOT_GO_PORT}."
-    fi
+    run_task "Mengaktifkan & menyalakan daemon WhatsApp Bot Go (bot_wa.service)" "systemctl daemon-reload && systemctl enable bot_wa.service && (systemctl restart bot_wa.service || true)"
+    log_success "Service WhatsApp Bot Go (bot_wa.service) aktif di port ${BOT_GO_PORT}."
 }
 
 # --- 9. Clone, Build & Setup Telegram Bot Go (bot_tele) ---
@@ -874,14 +822,11 @@ deploy_bot_tele() {
     git config --global --add safe.directory "${BOT_TELE_DIR}" 2>/dev/null || true
 
     if [ -d "${BOT_TELE_DIR}/.git" ]; then
-        log_info "Direktori ${BOT_TELE_DIR} sudah ada. Menarik update terbaru (git pull)..."
-        cd "${BOT_TELE_DIR}"
-        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+        run_task "Menarik commit terbaru Telegram Bot Go via Git (git pull)" "cd '${BOT_TELE_DIR}' && (git pull origin main || git pull origin master)"
     else
-        log_info "Melakukan git clone dari ${BOT_TELE_REPO} ke ${BOT_TELE_DIR}..."
         mkdir -p "${BOT_TELE_DIR}"
         rm -rf "${BOT_TELE_DIR:?}"/* "${BOT_TELE_DIR:?}"/.[!.]* 2>/dev/null || true
-        git clone "${BOT_TELE_REPO}" "${BOT_TELE_DIR}" >> "${LOG_FILE}" 2>&1
+        run_task "Mengunduh source code Telegram Bot Go dari GitHub" "git clone '${BOT_TELE_REPO}' '${BOT_TELE_DIR}'"
     fi
 
     cd "${BOT_TELE_DIR}"
@@ -911,19 +856,14 @@ TELEGRAM_BOT_TOKEN=
 EOF
 
     # Kompilasi binary Go
-    log_info "Mendownload dependencies Go & meng-compile binary bot_tele..."
     export GOROOT=/usr/local/go
     export GOPATH=$HOME/go
     export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 
-    /usr/local/go/bin/go mod tidy >> "${LOG_FILE}" 2>&1 || true
-    /usr/local/go/bin/go build -o "${BOT_TELE_DIR}/bot_tele" . >> "${LOG_FILE}" 2>&1
+    run_task "Mengunduh Go module & mengompilasi binary bot_tele (Go Build)" "cd '${BOT_TELE_DIR}' && (/usr/local/go/bin/go mod tidy || true) && /usr/local/go/bin/go build -o '${BOT_TELE_DIR}/bot_tele' ."
 
     if [ -f "${BOT_TELE_DIR}/bot_tele" ]; then
         chmod +x "${BOT_TELE_DIR}/bot_tele"
-        log_success "Binary Telegram Bot Go (bot_tele) berhasil di-compile!"
-    else
-        log_warn "Gagal meng-compile binary bot_tele otomatis. Silakan cek ${LOG_FILE}"
     fi
 
     # Buat Systemd Service untuk Telegram Bot
@@ -945,12 +885,8 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
-    systemctl enable bot_tele.service >> "${LOG_FILE}" 2>&1
-    if [ -f "${BOT_TELE_DIR}/bot_tele" ]; then
-        systemctl restart bot_tele.service >> "${LOG_FILE}" 2>&1 || true
-        log_success "Service Telegram Bot Go (bot_tele.service) aktif dan berjalan."
-    fi
+    run_task "Mengaktifkan & menyalakan daemon Telegram Bot Go (bot_tele.service)" "systemctl daemon-reload && systemctl enable bot_tele.service && (systemctl restart bot_tele.service || true)"
+    log_success "Service Telegram Bot Go (bot_tele.service) aktif dan berjalan."
 }
 
 # --- 10. Setup Nginx VirtualHost, Supervisor Queue & Cron ---
@@ -1011,10 +947,7 @@ server {
 }
 EOF
 
-    ln -sf "${vhost_file}" /etc/nginx/sites-enabled/absen.conf
-    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-    nginx -t >> "${LOG_FILE}" 2>&1
-    systemctl reload nginx >> "${LOG_FILE}" 2>&1
+    run_task "Memasang & memverifikasi konfigurasi Nginx VirtualHost" "ln -sf '${vhost_file}' /etc/nginx/sites-enabled/absen.conf && rm -f /etc/nginx/sites-enabled/default 2>/dev/null && nginx -t && systemctl reload nginx"
 
     # Supervisor Queue Worker (hemat RAM pada S905X: 1 proses)
     local num_workers=2
@@ -1039,13 +972,11 @@ stdout_logfile=${APP_DIR}/storage/logs/queue.log
 stopwaitsecs=3600
 EOF
 
-    supervisorctl reread >> "${LOG_FILE}" 2>&1 || true
-    supervisorctl update >> "${LOG_FILE}" 2>&1 || true
-    supervisorctl start absen-queue:* >> "${LOG_FILE}" 2>&1 || true
+    run_task "Menyiapkan & menyalakan antrian Supervisor (absen-queue)" "supervisorctl reread && supervisorctl update && (supervisorctl start absen-queue:* || true)"
 
     # Crontab Laravel Scheduler
     local cron_job="* * * * * cd ${APP_DIR} && php artisan schedule:run >> /dev/null 2>&1"
-    (crontab -u ${WEB_USER} -l 2>/dev/null | grep -v "artisan schedule:run"; echo "$cron_job") | crontab -u ${WEB_USER} -
+    run_task "Memasang penjadwal otomatis Crontab Laravel" "(crontab -u ${WEB_USER} -l 2>/dev/null | grep -v 'artisan schedule:run'; echo '$cron_job') | crontab -u ${WEB_USER} -"
 
     log_success "Nginx VirtualHost, Worker Queue, dan Cron Scheduler berhasil aktif!"
 }
