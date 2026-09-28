@@ -1,0 +1,1282 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
+#   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
+#   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
+#   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
+#  ███║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
+#  ╚══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+# ==============================================================================
+#  AUTO INSTALLER SERVER, WEB ABSENSI & WHATSAPP GATEWAY (GOWA LATEST)
+# ==============================================================================
+#  Target OS     : Debian (10/11/12) & Armbian Amlogic S905X (B860H/HG680P/Box)
+#  Repository    : https://github.com/kangdaqiq/absen_multi.git
+#  WhatsApp GW   : aldinokemal/go-whatsapp-web-multidevice (Auto Latest Release)
+#  Stack         : Nginx • PHP 8.3 • MariaDB • Composer 2 • Golang • GOWA
+#  Provider      : JAGAT TECH
+# ==============================================================================
+
+set -eo pipefail
+
+# --- Warna Tampilan ---
+C_RESET="\033[0m"
+C_BOLD="\033[1m"
+C_DIM="\033[2m"
+C_RED="\033[38;5;196m"
+C_GREEN="\033[38;5;46m"
+C_YELLOW="\033[38;5;220m"
+C_BLUE="\033[38;5;39m"
+C_CYAN="\033[38;5;51m"
+C_PURPLE="\033[38;5;135m"
+C_WHITE="\033[38;5;231m"
+
+# --- Icon Status ---
+ICON_CHECK="${C_GREEN}✔${C_RESET}"
+ICON_CROSS="${C_RED}✖${C_RESET}"
+ICON_ARROW="${C_CYAN}➜${C_RESET}"
+ICON_WARN="${C_YELLOW}⚠${C_RESET}"
+ICON_INFO="${C_BLUE}ℹ${C_RESET}"
+ICON_GEAR="${C_PURPLE}⚙${C_RESET}"
+
+# --- Variabel Default & Path Direktori ---
+LOG_FILE="/var/log/jagattech_install.log"
+BASE_WWW_DIR="/var/www"
+APP_DIR="${BASE_WWW_DIR}/web"
+BOT_GO_DIR="${BASE_WWW_DIR}/bot-go"
+BOT_WA_LINK="${BASE_WWW_DIR}/bot-wa"
+BOT_TELE_DIR="${BASE_WWW_DIR}/bot-tele"
+WA_DIR="${BASE_WWW_DIR}/whatsapp"
+
+GIT_REPO="https://github.com/kangdaqiq/absen_multi.git"
+BOT_GO_REPO="https://github.com/kangdaqiq/bot-go.git"
+BOT_GO_PORT="5000"
+BOT_TELE_REPO="https://github.com/kangdaqiq/bot_tele.git"
+PHP_DEFAULT_VER="8.3"
+WEB_USER="www-data"
+
+DB_HOST="127.0.0.1"
+DB_PORT="3306"
+DB_NAME_DEFAULT="absen_jagat"
+DB_USER_DEFAULT="absen_user"
+DEFAULT_PASSWORD="JagatTech123@"
+
+WA_PORT="3000"
+WA_USER="admin"
+WA_WEBHOOK_DEFAULT="http://127.0.0.1:5000/webhook"
+
+# --- Logging Helper ---
+log() {
+    local msg="$1"
+    echo -e "${msg}"
+    echo -e "${msg}" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+log_info()    { log " ${ICON_INFO} ${C_WHITE}$1${C_RESET}"; }
+log_step()    { log "\n${C_BOLD}${C_BLUE}▶ $1${C_RESET}"; }
+log_success() { log " ${ICON_CHECK} ${C_GREEN}$1${C_RESET}"; }
+log_warn()    { log " ${ICON_WARN} ${C_YELLOW}$1${C_RESET}"; }
+log_error()   { log " ${ICON_CROSS} ${C_RED}$1${C_RESET}"; }
+
+# --- Error Handler ---
+handle_error() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo ""
+        log_error "Instalasi terhenti karena error di baris $1 (Exit Code: $exit_code)."
+        log_warn "Silakan periksa log lengkap di: ${C_WHITE}${LOG_FILE}${C_RESET}"
+    fi
+}
+trap 'handle_error $LINENO' ERR
+
+# --- Banner JAGAT TECH ---
+show_banner() {
+    clear || true
+    echo -e "${C_PURPLE}${C_BOLD}"
+    cat << "EOF"
+   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
+   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
+   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
+   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
+█████║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
+╚════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+EOF
+    echo -e "${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}   >>> AUTO INSTALLER SERVER, WEB ABSENSI & GOWA LATEST <<<${C_RESET}"
+    echo -e "${C_DIM}   Target  : Debian x86_64 & Armbian Amlogic S905X (STB B860H/HG680P)${C_RESET}"
+    echo -e "${C_DIM}   Repo Git: ${GIT_REPO}${C_RESET}"
+    echo -e "${C_DIM}   Log File: ${LOG_FILE}${C_RESET}"
+    echo -e "──────────────────────────────────────────────────────────────────────────────"
+    echo ""
+}
+
+# --- Cek Hak Akses Root ---
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        log_error "Script ini harus dijalankan sebagai root!"
+        log_info "Silakan jalankan: ${C_BOLD}sudo bash $0${C_RESET}"
+        exit 1
+    fi
+}
+
+detect_server_ip() {
+    SERVER_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+    if [ -z "$SERVER_IP" ]; then
+        SERVER_IP="127.0.0.1"
+    fi
+}
+
+generate_random_password() {
+    local length=${1:-16}
+    LC_ALL=C tr -dc 'A-Za-z0-9!#%_+=' < /dev/urandom 2>/dev/null | head -c "$length" || openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c "$length"
+}
+
+# --- Deteksi OS & Arsitektur (Debian x86_64 & Armbian Amlogic S905X) ---
+detect_system() {
+    log_step "Mendeteksi Sistem Operasi & Arsitektur Perangkat..."
+
+    # 1. Deteksi OS
+    OS_NAME="unknown"
+    OS_CODENAME="unknown"
+    IS_ARMBIAN=false
+    IS_AMLOGIC_S905X=false
+
+    if [ -f /etc/armbian-release ]; then
+        IS_ARMBIAN=true
+    fi
+
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS_NAME="$ID"
+        OS_CODENAME="${VERSION_CODENAME:-$UBUNTU_CODENAME}"
+    fi
+
+    if [ -z "$OS_CODENAME" ] || [ "$OS_CODENAME" = "unknown" ]; then
+        OS_CODENAME=$(lsb_release -sc 2>/dev/null || echo "bookworm")
+    fi
+
+    # 2. Deteksi Arsitektur Perangkat
+    RAW_ARCH=$(uname -m)
+    case "$RAW_ARCH" in
+        x86_64)
+            ARCH_NAME="amd64"
+            GO_ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH_NAME="arm64"
+            GO_ARCH="arm64"
+            ;;
+        armv7l|armhf)
+            ARCH_NAME="armhf"
+            GO_ARCH="armv6l"
+            ;;
+        *)
+            log_error "Arsitektur '${RAW_ARCH}' tidak didukung. Installer ini hanya mendukung x86_64 dan Armbian Amlogic S905X."
+            exit 1
+            ;;
+    esac
+
+    # 3. Cek Spesifik Amlogic S905X (STB B860H, HG680P, X96 Mini, TX3 Mini, dsb)
+    local dt_model=""
+    if [ -f /proc/device-tree/model ]; then
+        dt_model=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo "")
+    fi
+
+    local armbian_board=""
+    if [ -f /etc/armbian-release ]; then
+        armbian_board=$(grep -E '^(BOARD|BOARDFAMILY|LINUXFAMILY)=' /etc/armbian-release | tr '\n' ' ' 2>/dev/null || echo "")
+    fi
+
+    local cpu_info=""
+    if [ -f /proc/cpuinfo ]; then
+        cpu_info=$(grep -E -i 'Hardware|model name|vendor_id' /proc/cpuinfo | head -n2 2>/dev/null || echo "")
+    fi
+
+    if [[ "$dt_model" =~ [Aa]mlogic|[Mm]eson|[Ss]905|[Bb]860|[Hh]g680|[Xx]96 ]] || \
+       [[ "$armbian_board" =~ meson64|amlogic|s905 ]] || \
+       [[ "$cpu_info" =~ [Aa]mlogic|[Mm]eson ]]; then
+        IS_AMLOGIC_S905X=true
+        DEVICE_TITLE="Armbian Amlogic S905X (STB B860H / HG680P / Box)"
+    elif [ "$ARCH_NAME" = "amd64" ]; then
+        DEVICE_TITLE="Debian x86_64 (PC / VPS Cloud Server)"
+    else
+        DEVICE_TITLE="Debian / Armbian ARM (${dt_model:-$RAW_ARCH})"
+    fi
+
+    log_success "Distro      : ${C_WHITE}${PRETTY_NAME:-$OS_NAME} (${OS_CODENAME})${C_RESET}"
+    if [ "$IS_AMLOGIC_S905X" = true ]; then
+        log_success "Perangkat   : ${C_GREEN}${C_BOLD}${DEVICE_TITLE}${C_RESET}"
+        log_info "Info Board  : ${C_DIM}${dt_model:-Amlogic Meson S905X}${C_RESET}"
+    else
+        log_success "Perangkat   : ${C_WHITE}${C_BOLD}${DEVICE_TITLE}${C_RESET}"
+    fi
+    log_success "Arsitektur  : ${C_YELLOW}${RAW_ARCH}${C_RESET} -> Paket Deb: ${C_BOLD}${ARCH_NAME}${C_RESET} | Binary Go: ${C_BOLD}${GO_ARCH}${C_RESET}"
+
+    # Pastikan turunan debian
+    if [[ "$OS_NAME" != "debian" && "$OS_NAME" != "ubuntu" && "$IS_ARMBIAN" != true && "$ID_LIKE" != *"debian"* ]]; then
+        log_warn "Sistem Anda terdeteksi sebagai '$OS_NAME'. Script ini dikhususkan untuk Debian / Armbian."
+        read -r -p "Tetap lanjutkan instalasi? [y/N]: " continue_confirm
+        case "$continue_confirm" in
+            [yY][eE][sS]|[yY]) ;;
+            *) exit 1 ;;
+        esac
+    fi
+}
+
+# --- Cek RAM & Setup Swap Otomatis ---
+check_ram_and_swap() {
+    log_step "Memeriksa Kapasitas Memori (RAM & Swap)..."
+    TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
+    TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+
+    log_info "Total RAM  : ${C_BOLD}${TOTAL_RAM} MB${C_RESET}"
+    log_info "Total Swap : ${C_BOLD}${TOTAL_SWAP} MB${C_RESET}"
+
+    if [ "$TOTAL_RAM" -lt 1800 ] && [ "$TOTAL_SWAP" -lt 1024 ]; then
+        log_warn "RAM perangkat di bawah 2GB. Menyiapkan Swap File 2GB otomatis agar proses Composer & Git tidak kehabisan memori..."
+        if [ ! -f /swapfile ]; then
+            fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 >> "${LOG_FILE}" 2>&1
+            chmod 600 /swapfile
+            mkswap /swapfile >> "${LOG_FILE}" 2>&1
+            swapon /swapfile >> "${LOG_FILE}" 2>&1
+            if ! grep -q '/swapfile' /etc/fstab; then
+                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+            fi
+            log_success "Swap 2GB berhasil diaktifkan!"
+        fi
+    else
+        log_success "Kapasitas memori mencukupi."
+    fi
+}
+
+# --- Input Konfigurasi Interaktif ---
+collect_inputs() {
+    detect_server_ip
+
+    echo ""
+    echo -e "${C_BOLD}${C_WHITE}--- PENGATURAN INSTALASI WEB ABSENSI & WHATSAPP JAGAT TECH ---${C_RESET}"
+    echo -e "${C_DIM}Tekan [ENTER] untuk menyetujui nilai default [di dalam kurung].${C_RESET}\n"
+
+    # 1. Domain / Host
+    echo -e "${ICON_ARROW} ${C_BOLD}Domain atau IP Server:${C_RESET}"
+    echo -e "   ${C_DIM}(Contoh: absen.sekolah.sch.id atau IP: ${SERVER_IP})${C_RESET}"
+    read -r -p "   Domain/IP [${SERVER_IP}]: " input_domain
+    APP_DOMAIN="${input_domain:-$SERVER_IP}"
+    APP_URL="http://${APP_DOMAIN}"
+
+    # 2. Database Name & User
+    echo ""
+    echo -e "${ICON_GEAR} ${C_BOLD}Pengaturan Database MariaDB:${C_RESET}"
+    read -r -p "   Nama Database [${DB_NAME_DEFAULT}]: " input_db_name
+    DB_NAME="${input_db_name:-$DB_NAME_DEFAULT}"
+
+    read -r -p "   User Database [${DB_USER_DEFAULT}]: " input_db_user
+    DB_USER="${input_db_user:-$DB_USER_DEFAULT}"
+
+    read -r -p "   Password Database [${DEFAULT_PASSWORD}]: " input_db_pass
+    DB_PASS="${input_db_pass:-$DEFAULT_PASSWORD}"
+
+    # 3. WhatsApp Gateway Password & Webhook
+    echo ""
+    echo -e "${ICON_GEAR} ${C_BOLD}Pengaturan WhatsApp Gateway (GOWA):${C_RESET}"
+    read -r -p "   Password WhatsApp Gateway [${DEFAULT_PASSWORD}]: " input_wa_pass
+    WA_PASS="${input_wa_pass:-$DEFAULT_PASSWORD}"
+
+    read -r -p "   Webhook URL WhatsApp [${WA_WEBHOOK_DEFAULT}]: " input_wa_webhook
+    WA_WEBHOOK_URL="${input_wa_webhook:-$WA_WEBHOOK_DEFAULT}"
+
+    echo ""
+    echo -e "──────────────────────────────────────────────────────────────────────────────"
+    echo -e "${C_BOLD}${C_GREEN}RINGKASAN TUGAS INSTALASI:${C_RESET}"
+    echo -e "  • Repositori Git : ${C_BOLD}${GIT_REPO}${C_RESET}"
+    echo -e "  • Lokasi Web     : ${C_BOLD}${APP_DIR}${C_RESET}"
+    echo -e "  • URL Akses Web  : ${C_BOLD}${APP_URL}${C_RESET}"
+    echo -e "  • Database       : ${C_BOLD}${DB_NAME}${C_RESET} (User: ${DB_USER})"
+    echo -e "  • WhatsApp GW    : ${C_BOLD}Port ${WA_PORT}${C_RESET} (User: ${WA_USER})"
+    echo -e "  • WA Webhook     : ${C_CYAN}${WA_WEBHOOK_URL}${C_RESET}"
+    echo -e "  • Engine Stack   : ${C_WHITE}Nginx, PHP 8.3, MariaDB, Composer, Golang, GOWA${C_RESET}"
+    echo -e "──────────────────────────────────────────────────────────────────────────────"
+    
+    read -r -p "Lanjutkan proses instalasi sekarang? [Y/n]: " confirm
+    case "$confirm" in
+        [nN][oO]|[nN])
+            log_warn "Instalasi dibatalkan."
+            exit 0
+            ;;
+        *)
+            ;;
+    esac
+}
+
+# --- 1. Base Tools & Dependencies ---
+install_base_tools() {
+    log_step "[1/11] Memperbarui Repository APT & Menginstal Utilitas Dasar..."
+    export DEBIAN_FRONTEND=noninteractive
+    
+    apt-get update -y >> "${LOG_FILE}" 2>&1
+    apt-get install -y \
+        curl wget git unzip zip tar ca-certificates gnupg \
+        lsb-release apt-transport-https software-properties-common \
+        build-essential ufw cron supervisor fail2ban jq >> "${LOG_FILE}" 2>&1
+    
+    log_success "Paket utilitas dasar & git siap."
+}
+
+# --- 2. Install Nginx ---
+install_nginx() {
+    log_step "[2/11] Menginstal Nginx Web Server..."
+    export DEBIAN_FRONTEND=noninteractive
+
+    if systemctl is-active --quiet apache2 2>/dev/null; then
+        log_warn "Apache2 aktif terdeteksi. Mematikan Apache2..."
+        systemctl stop apache2 >> "${LOG_FILE}" 2>&1 || true
+        systemctl disable apache2 >> "${LOG_FILE}" 2>&1 || true
+    fi
+
+    apt-get install -y nginx >> "${LOG_FILE}" 2>&1
+    systemctl enable nginx >> "${LOG_FILE}" 2>&1
+    systemctl restart nginx >> "${LOG_FILE}" 2>&1
+
+    local nginx_ver
+    nginx_ver=$(nginx -v 2>&1 | awk -F/ '{print $2}')
+    log_success "Nginx v${nginx_ver} berhasil diinstal dan berjalan."
+}
+
+# --- 3. Install PHP 8.3 & Ekstensi Lengkap (Sury Multi-Arch) ---
+install_php() {
+    log_step "[3/11] Menyiapkan PHP ${PHP_DEFAULT_VER} & Ekstensi (Sury Multi-Arch)..."
+    export DEBIAN_FRONTEND=noninteractive
+
+    local php_ver="$PHP_DEFAULT_VER"
+
+    if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ]; then
+        log_info "Mengunduh GPG Key Sury PHP..."
+        curl -sSLo /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg >> "${LOG_FILE}" 2>&1
+    fi
+
+    if [[ "$OS_NAME" == "ubuntu" ]]; then
+        if ! grep -q "ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
+            add-apt-repository -y ppa:ondrej/php >> "${LOG_FILE}" 2>&1
+        fi
+    else
+        echo "deb https://packages.sury.org/php/ ${OS_CODENAME} main" > /etc/apt/sources.list.d/php.list
+    fi
+
+    apt-get update -y >> "${LOG_FILE}" 2>&1
+
+    apt-get install -y \
+        php${php_ver}-fpm \
+        php${php_ver}-cli \
+        php${php_ver}-common \
+        php${php_ver}-mysql \
+        php${php_ver}-mbstring \
+        php${php_ver}-bcmath \
+        php${php_ver}-gd \
+        php${php_ver}-zip \
+        php${php_ver}-intl \
+        php${php_ver}-xml \
+        php${php_ver}-curl \
+        php${php_ver}-opcache \
+        php${php_ver}-readline >> "${LOG_FILE}" 2>&1
+
+    apt-get install -y php${php_ver}-pcntl >> "${LOG_FILE}" 2>&1 || true
+
+    local fpm_ini="/etc/php/${php_ver}/fpm/php.ini"
+    local cli_ini="/etc/php/${php_ver}/cli/php.ini"
+    local fpm_pool="/etc/php/${php_ver}/fpm/pool.d/www.conf"
+
+    local php_mem="512M"
+    if [ "$IS_AMLOGIC_S905X" = true ] || [ "$TOTAL_RAM" -lt 1800 ]; then
+        php_mem="256M"
+        log_info "Menerapkan profil memori hemat RAM (256M) untuk S905X..."
+    fi
+
+    for ini in "$fpm_ini" "$cli_ini"; do
+        if [ -f "$ini" ]; then
+            sed -i 's/^upload_max_filesize = .*/upload_max_filesize = 64M/' "$ini"
+            sed -i 's/^post_max_size = .*/post_max_size = 64M/' "$ini"
+            sed -i "s/^memory_limit = .*/memory_limit = ${php_mem}/" "$ini"
+            sed -i 's/^max_execution_time = .*/max_execution_time = 300/' "$ini"
+        fi
+    done
+
+    # FPM pool tuning untuk S905X
+    if [ "$IS_AMLOGIC_S905X" = true ] && [ -f "$fpm_pool" ]; then
+        log_info "Mengatur FPM pool ke mode ondemand (hemat daya & memori STB)..."
+        sed -i 's/^pm = .*/pm = ondemand/' "$fpm_pool"
+        sed -i 's/^pm.max_children = .*/pm.max_children = 8/' "$fpm_pool"
+        sed -i 's/^;pm.process_idle_timeout = .*/pm.process_idle_timeout = 10s/' "$fpm_pool"
+        sed -i 's/^;pm.max_requests = .*/pm.max_requests = 200/' "$fpm_pool"
+    fi
+
+    systemctl restart php${php_ver}-fpm >> "${LOG_FILE}" 2>&1
+    systemctl enable php${php_ver}-fpm >> "${LOG_FILE}" 2>&1
+
+    local installed_php
+    installed_php=$(php -v | head -n1 | awk '{print $2}')
+    log_success "PHP v${installed_php} (FPM & CLI) berhasil diinstal."
+}
+
+# --- 4. Install MariaDB & Buat Database ---
+install_database() {
+    log_step "[4/11] Menginstal & Menyiapkan Database MariaDB..."
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get install -y mariadb-server mariadb-client >> "${LOG_FILE}" 2>&1 || \
+    apt-get install -y default-mysql-server default-mysql-client >> "${LOG_FILE}" 2>&1
+
+    # Tuning khusus S905X (ramah flash storage & hemat RAM)
+    if [ "$IS_AMLOGIC_S905X" = true ]; then
+        local db_conf_dir="/etc/mysql/mariadb.conf.d"
+        [ ! -d "$db_conf_dir" ] && db_conf_dir="/etc/mysql/conf.d"
+        mkdir -p "$db_conf_dir"
+
+        cat << 'EOF' > "${db_conf_dir}/99-jagat-s905x.cnf"
+[mysqld]
+innodb_buffer_pool_size = 64M
+innodb_log_file_size = 16M
+innodb_flush_log_at_trx_commit = 2
+max_connections = 50
+key_buffer_size = 16M
+table_open_cache = 400
+EOF
+    fi
+
+    systemctl enable mariadb >> "${LOG_FILE}" 2>&1 || systemctl enable mysql >> "${LOG_FILE}" 2>&1
+    systemctl restart mariadb >> "${LOG_FILE}" 2>&1 || systemctl restart mysql >> "${LOG_FILE}" 2>&1
+
+    log_info "Membuat database '${DB_NAME}' & user '${DB_USER}'..."
+    mysql -u root <<EOF >> "${LOG_FILE}" 2>&1
+CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
+ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+    log_success "Database '${DB_NAME}' dan pengguna '${DB_USER}' berhasil dikonfigurasi."
+}
+
+# --- 5. Install Composer & Golang ---
+install_composer_and_go() {
+    log_step "[5/11] Menginstal Composer 2 & Golang Engine..."
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Composer
+    if ! command -v composer &> /dev/null; then
+        local composer_setup="/tmp/composer-setup.php"
+        curl -sS https://getcomposer.org/installer -o "$composer_setup"
+        php "$composer_setup" --install-dir=/usr/local/bin --filename=composer >> "${LOG_FILE}" 2>&1
+        rm -f "$composer_setup"
+    fi
+    log_success "Composer v$(composer --version 2>&1 | head -n1 | awk '{print $3}') terpasang."
+
+    # Golang
+    local go_latest_ver
+    go_latest_ver=$(curl -sSL "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1 || echo "go1.23.1")
+    [ -z "$go_latest_ver" ] && go_latest_ver="go1.23.1"
+
+    local need_install_go=true
+    if command -v /usr/local/go/bin/go &> /dev/null; then
+        local current_go
+        current_go=$(/usr/local/go/bin/go version | awk '{print $3}')
+        if [ "$current_go" = "$go_latest_ver" ]; then
+            need_install_go=false
+        fi
+    fi
+
+    if [ "$need_install_go" = true ]; then
+        local go_archive="${go_latest_ver}.linux-${GO_ARCH}.tar.gz"
+        local go_url="https://go.dev/dl/${go_archive}"
+        log_info "Mengunduh Golang ${go_latest_ver} (${GO_ARCH})..."
+        if curl -sSL -f "$go_url" -o "/tmp/${go_archive}"; then
+            rm -rf /usr/local/go
+            tar -C /usr/local -xzf "/tmp/${go_archive}"
+            rm -f "/tmp/${go_archive}"
+        else
+            apt-get install -y golang-go >> "${LOG_FILE}" 2>&1
+        fi
+    fi
+
+    # Setup PATH Go
+    cat << 'EOF' > /etc/profile.d/golang.sh
+export GOROOT=/usr/local/go
+export GOPATH=$HOME/go
+export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+EOF
+    chmod +x /etc/profile.d/golang.sh
+    export GOROOT=/usr/local/go
+    export GOPATH=$HOME/go
+    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+
+    log_success "Golang (${GO_ARCH}) terpasang di /usr/local/go/bin/go."
+}
+
+# --- 6. Clone / Deploy Web Absen dari Git Repo ---
+deploy_web_absen() {
+    log_step "[6/11] Mengunduh & Memasang Web Absen via Git (${GIT_REPO})..."
+
+    git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+
+    if [ -d "${APP_DIR}/.git" ]; then
+        log_info "Direktori ${APP_DIR} sudah merupakan repositori Git. Menarik update terbaru (git pull)..."
+        cd "${APP_DIR}"
+        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+    else
+        log_info "Melakukan git clone dari ${GIT_REPO} ke ${APP_DIR}..."
+        mkdir -p "${APP_DIR}"
+        rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
+        git clone "${GIT_REPO}" "${APP_DIR}" >> "${LOG_FILE}" 2>&1
+    fi
+
+    cd "${APP_DIR}"
+
+    # Buat direktori framework & storage lengkap
+    mkdir -p "${APP_DIR}/storage/framework/cache/data" \
+             "${APP_DIR}/storage/framework/sessions" \
+             "${APP_DIR}/storage/framework/views" \
+             "${APP_DIR}/storage/logs" \
+             "${APP_DIR}/bootstrap/cache"
+
+    # Konfigurasi .env (Utamakan .env.selfhosted.example)
+    log_info "Mengkonfigurasi file .env dari template .env.selfhosted.example..."
+    if [ ! -f .env ]; then
+        if [ -f .env.selfhosted.example ]; then
+            cp .env.selfhosted.example .env
+        elif [ -f .env.example ]; then
+            cp .env.example .env
+        else
+            touch .env
+        fi
+    fi
+
+    set_env_val() {
+        local key="$1"
+        local val="$2"
+        if grep -q "^${key}=" .env; then
+            sed -i "s|^${key}=.*|${key}=${val}|" .env
+        else
+            echo "${key}=${val}" >> .env
+        fi
+    }
+
+    set_env_val "APP_NAME" "\"Sistem Absensi JAGAT TECH\""
+    set_env_val "APP_ENV" "production"
+    set_env_val "APP_DEBUG" "false"
+    set_env_val "APP_URL" "${APP_URL}"
+    set_env_val "APP_MODE" "self_hosted"
+
+    set_env_val "LICENSE_SERVER_URL" "https://absen.jagattech.my.id"
+
+    # Database Configuration (Harmonized)
+    set_env_val "DB_CONNECTION" "mysql"
+    set_env_val "DB_HOST" "${DB_HOST}"
+    set_env_val "DB_PORT" "${DB_PORT}"
+    set_env_val "DB_DATABASE" "${DB_NAME}"
+    set_env_val "DB_USERNAME" "${DB_USER}"
+    set_env_val "DB_PASSWORD" "${DB_PASS}"
+    set_env_val "DB_NAME" "${DB_NAME}"
+    set_env_val "DB_USER" "${DB_USER}"
+
+    set_env_val "SESSION_DRIVER" "database"
+    set_env_val "SESSION_LIFETIME" "120"
+    set_env_val "CACHE_STORE" "database"
+    set_env_val "QUEUE_CONNECTION" "database"
+
+    # WhatsApp API (GOWA Harmonized)
+    set_env_val "GOWA_API_BASE_URL" "http://127.0.0.1:${WA_PORT}"
+    set_env_val "GOWA_API_USER" "${WA_USER}"
+    set_env_val "GOWA_API_PASS" "${WA_PASS}"
+
+    set_env_val "WA_API_BASE_URL" "http://127.0.0.1:${WA_PORT}"
+    set_env_val "WA_API_URL" "http://127.0.0.1:${WA_PORT}"
+    set_env_val "WA_API_USER" "${WA_USER}"
+    set_env_val "WA_API_PASS" "${WA_PASS}"
+
+    # Jalankan Composer
+    if [ -f composer.json ]; then
+        log_info "Menjalankan composer install..."
+        export COMPOSER_ALLOW_SUPERUSER=1
+        composer install --no-dev --optimize-autoloader --no-interaction >> "${LOG_FILE}" 2>&1 || {
+            log_warn "Composer install selesai dengan beberapa catatan."
+        }
+    fi
+
+    # Artisan Commands
+    if [ -f artisan ]; then
+        log_info "Membuat APP_KEY..."
+        php artisan key:generate --force >> "${LOG_FILE}" 2>&1 || true
+
+        log_info "Menjalankan database migration..."
+        php artisan migrate --force >> "${LOG_FILE}" 2>&1 || {
+            log_warn "Migrasi database selesai (tabel siap)."
+        }
+
+        log_info "Menghubungkan storage link..."
+        php artisan storage:link --force >> "${LOG_FILE}" 2>&1 || true
+
+        log_info "Mengoptimalkan cache konfigurasi..."
+        php artisan optimize:clear >> "${LOG_FILE}" 2>&1 || true
+        php artisan optimize >> "${LOG_FILE}" 2>&1 || true
+    fi
+
+    # Set Permissions
+    log_info "Mengatur hak akses direktori www-data..."
+    chown -R ${WEB_USER}:${WEB_USER} "${APP_DIR}"
+    chmod -R 755 "${APP_DIR}"
+    if [ -d "${APP_DIR}/storage" ]; then
+        chmod -R 775 "${APP_DIR}/storage"
+        chown -R ${WEB_USER}:${WEB_USER} "${APP_DIR}/storage"
+    fi
+    if [ -d "${APP_DIR}/bootstrap/cache" ]; then
+        chmod -R 775 "${APP_DIR}/bootstrap/cache"
+        chown -R ${WEB_USER}:${WEB_USER} "${APP_DIR}/bootstrap/cache"
+    fi
+
+    log_success "Web Absensi berhasil diinstal dari Git ke ${APP_DIR}."
+}
+
+# --- 7. Install & Setup WhatsApp Gateway (GOWA Latest Release) ---
+install_gowa_whatsapp() {
+    log_step "[7/11] Mengunduh & Memasang WhatsApp Gateway (GOWA Latest Release)..."
+
+    # 1. Cari release terbaru dari GitHub API
+    log_info "Mencari versi terbaru GOWA di GitHub API..."
+    local latest_tag=""
+    latest_tag=$(curl -sSL "https://api.github.com/repos/aldinokemal/go-whatsapp-web-multidevice/releases/latest" 2>/dev/null | grep '"tag_name":' | head -n1 | cut -d '"' -f 4 || echo "")
+    
+    if [ -z "$latest_tag" ]; then
+        latest_tag="v9.5.0"
+        log_warn "Tidak dapat menjangkau GitHub API secara langsung. Menggunakan fallback versi stabil: ${latest_tag}"
+    else
+        log_info "Versi terbaru GOWA ditemukan: ${C_BOLD}${C_GREEN}${latest_tag}${C_RESET}"
+    fi
+
+    local gowa_ver="${latest_tag#v}"
+
+    # 2. Tentukan nama zip dan binary berdasarkan arsitektur perangkat
+    local gowa_zip_name=""
+    local gowa_inner_bin=""
+    case "$ARCH_NAME" in
+        amd64)
+            gowa_zip_name="whatsapp_${gowa_ver}_linux_amd64.zip"
+            gowa_inner_bin="linux-amd64"
+            ;;
+        arm64)
+            gowa_zip_name="whatsapp_${gowa_ver}_linux_arm64.zip"
+            gowa_inner_bin="linux-arm64"
+            ;;
+        armhf)
+            gowa_zip_name="whatsapp_${gowa_ver}_linux_armv7.zip"
+            gowa_inner_bin="linux-armv7"
+            ;;
+        *)
+            gowa_zip_name="whatsapp_${gowa_ver}_linux_amd64.zip"
+            gowa_inner_bin="linux-amd64"
+            ;;
+    esac
+
+    local gowa_url="https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/download/${latest_tag}/${gowa_zip_name}"
+
+    log_info "Mengunduh ${gowa_zip_name}..."
+    local tmp_zip="/tmp/${gowa_zip_name}"
+    local tmp_extract="/tmp/gowa_extract"
+    rm -rf "$tmp_extract" "$tmp_zip"
+    mkdir -p "$tmp_extract"
+
+    if curl -sSL -f "$gowa_url" -o "$tmp_zip"; then
+        unzip -q -o "$tmp_zip" -d "$tmp_extract"
+
+        # Pindahkan binary ke /usr/local/bin/whatsapp dan direktori kerja /var/www/whatsapp
+        mkdir -p "${WA_DIR}/storages"
+        if [ -f "${tmp_extract}/${gowa_inner_bin}" ]; then
+            cp -f "${tmp_extract}/${gowa_inner_bin}" /usr/local/bin/whatsapp
+            cp -f "${tmp_extract}/${gowa_inner_bin}" "${WA_DIR}/whatsapp"
+        elif [ -f "${tmp_extract}/whatsapp" ]; then
+            cp -f "${tmp_extract}/whatsapp" /usr/local/bin/whatsapp
+            cp -f "${tmp_extract}/whatsapp" "${WA_DIR}/whatsapp"
+        else
+            local found_bin
+            found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.txt" | head -n1)
+            if [ -n "$found_bin" ]; then
+                cp -f "$found_bin" /usr/local/bin/whatsapp
+                cp -f "$found_bin" "${WA_DIR}/whatsapp"
+            fi
+        fi
+
+        chmod +x /usr/local/bin/whatsapp
+        chmod +x "${WA_DIR}/whatsapp" 2>/dev/null || true
+        ln -sf /usr/local/bin/whatsapp /usr/local/bin/gowa
+        rm -rf "$tmp_extract" "$tmp_zip"
+
+        log_success "Binary WhatsApp Gateway terpasang di ${WA_DIR}/whatsapp dan /usr/local/bin/whatsapp!"
+    else
+        log_error "Gagal mengunduh GOWA dari URL: ${gowa_url}"
+        log_info "Instalasi berlanjut. Anda dapat menyalin binary manual ke ${WA_DIR}/whatsapp."
+    fi
+
+    # 3. Setup direktori & hak akses penyimpanan WhatsApp di /var/www/whatsapp
+    mkdir -p "${WA_DIR}/storages"
+    [ -f /usr/local/bin/whatsapp ] && [ ! -f "${WA_DIR}/whatsapp" ] && cp -f /usr/local/bin/whatsapp "${WA_DIR}/whatsapp"
+    chmod +x "${WA_DIR}/whatsapp" 2>/dev/null || true
+    chown -R ${WEB_USER}:${WEB_USER} "${WA_DIR}"
+
+    # 4. Buat Systemd Service (Berjalan langsung dari /var/www/whatsapp)
+    cat << EOF > /etc/systemd/system/whatsapp.service
+[Unit]
+Description=WhatsApp Gateway Multi-Device Service (JAGAT TECH)
+After=network.target
+
+[Service]
+Type=simple
+User=${WEB_USER}
+WorkingDirectory=${WA_DIR}
+ExecStart=${WA_DIR}/whatsapp rest --port=${WA_PORT} --basic-auth=${WA_USER}:${WA_PASS} --webhook=${WA_WEBHOOK_URL}
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
+    systemctl enable whatsapp.service >> "${LOG_FILE}" 2>&1
+    if [ -f "${WA_DIR}/whatsapp" ] || [ -f /usr/local/bin/whatsapp ]; then
+        systemctl restart whatsapp.service >> "${LOG_FILE}" 2>&1 || true
+        log_success "Service WhatsApp Gateway (whatsapp.service) aktif di port ${WA_PORT}."
+    fi
+}
+
+# --- 8. Clone, Build & Setup WhatsApp Bot Go (bot-go) ---
+deploy_bot_wa_go() {
+    log_step "[8/11] Mengunduh, Membangun & Memasang WhatsApp Bot Go (${BOT_GO_REPO})..."
+
+    git config --global --add safe.directory "${BOT_GO_DIR}" 2>/dev/null || true
+
+    if [ -d "${BOT_GO_DIR}/.git" ]; then
+        log_info "Direktori ${BOT_GO_DIR} sudah ada. Menarik update terbaru (git pull)..."
+        cd "${BOT_GO_DIR}"
+        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+    else
+        log_info "Melakukan git clone dari ${BOT_GO_REPO} ke ${BOT_GO_DIR}..."
+        mkdir -p "${BOT_GO_DIR}"
+        rm -rf "${BOT_GO_DIR:?}"/* "${BOT_GO_DIR:?}"/.[!.]* 2>/dev/null || true
+        git clone "${BOT_GO_REPO}" "${BOT_GO_DIR}" >> "${LOG_FILE}" 2>&1
+    fi
+
+    cd "${BOT_GO_DIR}"
+
+    # Buat file .env untuk bot-go (Lengkap & Serasi dengan DB & WA)
+    log_info "Menyiapkan file .env untuk WhatsApp Bot Go..."
+    cat << EOF > "${BOT_GO_DIR}/.env"
+# ==============================================================================
+#  ENV KONFIGURASI WHATSAPP BOT GO (JAGAT TECH)
+# ==============================================================================
+
+# Server Webhook Port (Menerima event pesan dari GOWA)
+PORT=${BOT_GO_PORT}
+
+# MariaDB Database Connection
+DB_CONNECTION=mysql
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+DB_NAME=${DB_NAME}
+DB_DATABASE=${DB_NAME}
+DB_USER=${DB_USER}
+DB_USERNAME=${DB_USER}
+DB_PASSWORD=${DB_PASS}
+
+# WhatsApp Gateway Connection (GOWA)
+GOWA_API_BASE_URL=http://127.0.0.1:${WA_PORT}
+GOWA_API_USER=${WA_USER}
+GOWA_API_PASS=${WA_PASS}
+WA_API_URL=http://127.0.0.1:${WA_PORT}
+WA_API_BASE_URL=http://127.0.0.1:${WA_PORT}
+WA_API_USER=${WA_USER}
+WA_API_PASS=${WA_PASS}
+
+# Server Web URL & Device Settings
+APP_URL=${APP_URL}
+WA_DEVICE_ID=1
+SUPERADMIN_WA_ID=
+EOF
+
+    # Kompilasi binary Go
+    log_info "Mendownload dependencies Go & meng-compile binary bot_wa..."
+    export GOROOT=/usr/local/go
+    export GOPATH=$HOME/go
+    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+
+    /usr/local/go/bin/go mod tidy >> "${LOG_FILE}" 2>&1 || true
+    /usr/local/go/bin/go build -o "${BOT_GO_DIR}/bot_wa" main.go >> "${LOG_FILE}" 2>&1
+
+    if [ -f "${BOT_GO_DIR}/bot_wa" ]; then
+        chmod +x "${BOT_GO_DIR}/bot_wa"
+        log_success "Binary WhatsApp Bot Go (bot_wa) berhasil di-compile!"
+    else
+        log_warn "Gagal meng-compile binary bot_wa otomatis. Silakan cek ${LOG_FILE}"
+    fi
+
+    # Buat Systemd Service untuk Bot WhatsApp Go
+    cat << EOF > /etc/systemd/system/bot_wa.service
+[Unit]
+Description=WhatsApp Bot Absensi Go Service (JAGAT TECH)
+After=network.target mariadb.service mysql.service whatsapp.service
+Wants=whatsapp.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${BOT_GO_DIR}
+ExecStart=${BOT_GO_DIR}/bot_wa
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Buat symlink /var/www/bot-wa -> /var/www/bot-go agar bisa diakses kedua nama
+    ln -sf "${BOT_GO_DIR}" "${BOT_WA_LINK}"
+
+    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
+    systemctl enable bot_wa.service >> "${LOG_FILE}" 2>&1
+    if [ -f "${BOT_GO_DIR}/bot_wa" ]; then
+        systemctl restart bot_wa.service >> "${LOG_FILE}" 2>&1 || true
+        log_success "Service WhatsApp Bot Go (bot_wa.service) aktif di port ${BOT_GO_PORT}."
+    fi
+}
+
+# --- 9. Clone, Build & Setup Telegram Bot Go (bot_tele) ---
+deploy_bot_tele() {
+    log_step "[9/11] Mengunduh, Membangun & Memasang Telegram Bot Go (${BOT_TELE_REPO})..."
+
+    git config --global --add safe.directory "${BOT_TELE_DIR}" 2>/dev/null || true
+
+    if [ -d "${BOT_TELE_DIR}/.git" ]; then
+        log_info "Direktori ${BOT_TELE_DIR} sudah ada. Menarik update terbaru (git pull)..."
+        cd "${BOT_TELE_DIR}"
+        git pull origin main >> "${LOG_FILE}" 2>&1 || git pull origin master >> "${LOG_FILE}" 2>&1 || true
+    else
+        log_info "Melakukan git clone dari ${BOT_TELE_REPO} ke ${BOT_TELE_DIR}..."
+        mkdir -p "${BOT_TELE_DIR}"
+        rm -rf "${BOT_TELE_DIR:?}"/* "${BOT_TELE_DIR:?}"/.[!.]* 2>/dev/null || true
+        git clone "${BOT_TELE_REPO}" "${BOT_TELE_DIR}" >> "${LOG_FILE}" 2>&1
+    fi
+
+    cd "${BOT_TELE_DIR}"
+
+    # Buat file .env untuk bot_tele (Serasi dengan MariaDB & Web App)
+    log_info "Menyiapkan file .env untuk Telegram Bot..."
+    cat << EOF > "${BOT_TELE_DIR}/.env"
+# ==============================================================================
+#  ENV KONFIGURASI TELEGRAM BOT GO (JAGAT TECH)
+# ==============================================================================
+
+# Database Connection Settings
+DB_CONNECTION=mysql
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+DB_DATABASE=${DB_NAME}
+DB_NAME=${DB_NAME}
+DB_USERNAME=${DB_USER}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASS}
+
+# Server Web URL Settings
+APP_URL=${APP_URL}
+
+# Telegram Bot Token (Dapatkan dari @BotFather di Telegram)
+TELEGRAM_BOT_TOKEN=
+EOF
+
+    # Kompilasi binary Go
+    log_info "Mendownload dependencies Go & meng-compile binary bot_tele..."
+    export GOROOT=/usr/local/go
+    export GOPATH=$HOME/go
+    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+
+    /usr/local/go/bin/go mod tidy >> "${LOG_FILE}" 2>&1 || true
+    /usr/local/go/bin/go build -o "${BOT_TELE_DIR}/bot_tele" . >> "${LOG_FILE}" 2>&1
+
+    if [ -f "${BOT_TELE_DIR}/bot_tele" ]; then
+        chmod +x "${BOT_TELE_DIR}/bot_tele"
+        log_success "Binary Telegram Bot Go (bot_tele) berhasil di-compile!"
+    else
+        log_warn "Gagal meng-compile binary bot_tele otomatis. Silakan cek ${LOG_FILE}"
+    fi
+
+    # Buat Systemd Service untuk Telegram Bot
+    cat << EOF > /etc/systemd/system/bot_tele.service
+[Unit]
+Description=Telegram Bot Absensi Multi-Tenant Service (JAGAT TECH)
+After=network.target mariadb.service mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${BOT_TELE_DIR}
+ExecStart=${BOT_TELE_DIR}/bot_tele
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
+    systemctl enable bot_tele.service >> "${LOG_FILE}" 2>&1
+    if [ -f "${BOT_TELE_DIR}/bot_tele" ]; then
+        systemctl restart bot_tele.service >> "${LOG_FILE}" 2>&1 || true
+        log_success "Service Telegram Bot Go (bot_tele.service) aktif dan berjalan."
+    fi
+}
+
+# --- 10. Setup Nginx VirtualHost, Supervisor Queue & Cron ---
+setup_services_and_vhost() {
+    log_step "[10/11] Mengkonfigurasi Nginx, Queue Worker & Scheduler..."
+
+    # Nginx VHost
+    local vhost_file="/etc/nginx/sites-available/absen.conf"
+    cat << EOF > "${vhost_file}"
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${APP_DOMAIN};
+    root ${APP_DIR}/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+
+    index index.php index.html;
+    charset utf-8;
+
+    client_max_body_size 64M;
+
+    # WhatsApp Gateway Proxy
+    location /wa-portal/ {
+        proxy_pass http://127.0.0.1:${WA_PORT}/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php${PHP_DEFAULT_VER}-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_read_timeout 300;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    access_log /var/log/nginx/absen_access.log;
+    error_log /var/log/nginx/absen_error.log;
+}
+EOF
+
+    ln -sf "${vhost_file}" /etc/nginx/sites-enabled/absen.conf
+    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+    nginx -t >> "${LOG_FILE}" 2>&1
+    systemctl reload nginx >> "${LOG_FILE}" 2>&1
+
+    # Supervisor Queue Worker (hemat RAM pada S905X: 1 proses)
+    local num_workers=2
+    if [ "$IS_AMLOGIC_S905X" = true ] || [ "$TOTAL_RAM" -lt 1800 ]; then
+        num_workers=1
+    fi
+
+    mkdir -p "${APP_DIR}/storage/logs"
+    touch "${APP_DIR}/storage/logs/queue.log"
+    chown -R ${WEB_USER}:${WEB_USER} "${APP_DIR}/storage"
+
+    cat << EOF > /etc/supervisor/conf.d/absen-queue.conf
+[program:absen-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=php ${APP_DIR}/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+user=${WEB_USER}
+numprocs=${num_workers}
+redirect_stderr=true
+stdout_logfile=${APP_DIR}/storage/logs/queue.log
+stopwaitsecs=3600
+EOF
+
+    supervisorctl reread >> "${LOG_FILE}" 2>&1 || true
+    supervisorctl update >> "${LOG_FILE}" 2>&1 || true
+    supervisorctl start absen-queue:* >> "${LOG_FILE}" 2>&1 || true
+
+    # Crontab Laravel Scheduler
+    local cron_job="* * * * * cd ${APP_DIR} && php artisan schedule:run >> /dev/null 2>&1"
+    (crontab -u ${WEB_USER} -l 2>/dev/null | grep -v "artisan schedule:run"; echo "$cron_job") | crontab -u ${WEB_USER} -
+
+    log_success "Nginx VirtualHost, Worker Queue, dan Cron Scheduler berhasil aktif!"
+}
+
+# --- 11. Buat CLI Shortcut & Fitur Git Update Mudah ---
+setup_cli_tool() {
+    log_step "[11/11] Memasang Utility CLI & Fitur Git Update Otomatis..."
+
+    cat << 'EOF' > /usr/local/bin/absen
+#!/usr/bin/env bash
+# ==============================================================================
+#  CLI UTILITY JAGAT TECH - MANAJEMEN & UPDATE GIT SISTEM ABSENSI
+# ==============================================================================
+APP_DIR="/var/www/web"
+BOT_WA_DIR="/var/www/bot-go"
+BOT_TELE_DIR="/var/www/bot-tele"
+WA_DIR="/var/www/whatsapp"
+
+GREEN="\033[0;32m"
+RED="\033[0;31m"
+YELLOW="\033[1;33m"
+CYAN="\033[0;36m"
+BOLD="\033[1m"
+NC="\033[0m"
+
+case "$1" in
+    update)
+        echo -e "${CYAN}${BOLD}=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH ===${NC}"
+        
+        # 1. Update Web Absensi
+        if [ -d "$APP_DIR" ]; then
+            echo -e "${YELLOW}▶ [1/3] Menarik commit terbaru Web Absen (git pull)...${NC}"
+            cd "$APP_DIR" || exit 1
+            git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+            git pull origin main || git pull origin master
+
+            echo -e "${YELLOW}  • Memperbarui dependensi PHP (composer install)...${NC}"
+            export COMPOSER_ALLOW_SUPERUSER=1
+            composer install --no-dev --optimize-autoloader --no-interaction
+
+            echo -e "${YELLOW}  • Menjalankan migrasi database baru...${NC}"
+            php artisan migrate --force
+
+            echo -e "${YELLOW}  • Membersihkan & mengoptimalkan cache Laravel...${NC}"
+            php artisan storage:link --force 2>/dev/null || true
+            php artisan optimize:clear
+            php artisan optimize
+
+            echo -e "${YELLOW}  • Me-restart antrian background (queue worker)...${NC}"
+            supervisorctl restart absen-queue:* 2>/dev/null || true
+        fi
+
+        # 2. Update Bot WhatsApp Go
+        if [ -d "$BOT_WA_DIR" ]; then
+            echo -e "${YELLOW}▶ [2/3] Menarik commit terbaru Bot WhatsApp Go (git pull & build)...${NC}"
+            cd "$BOT_WA_DIR" || exit 1
+            git config --global --add safe.directory "$BOT_WA_DIR" 2>/dev/null || true
+            git pull origin main || git pull origin master
+            export GOROOT=/usr/local/go
+            export PATH=$PATH:/usr/local/go/bin
+            /usr/local/go/bin/go mod tidy 2>/dev/null || true
+            /usr/local/go/bin/go build -o bot_wa main.go 2>/dev/null || true
+            systemctl restart bot_wa.service 2>/dev/null || true
+        fi
+
+        # 3. Update Bot Telegram Go
+        if [ -d "$BOT_TELE_DIR" ]; then
+            echo -e "${YELLOW}▶ [3/3] Menarik commit terbaru Bot Telegram Go (git pull & build)...${NC}"
+            cd "$BOT_TELE_DIR" || exit 1
+            git config --global --add safe.directory "$BOT_TELE_DIR" 2>/dev/null || true
+            git pull origin main || git pull origin master
+            export GOROOT=/usr/local/go
+            export PATH=$PATH:/usr/local/go/bin
+            /usr/local/go/bin/go mod tidy 2>/dev/null || true
+            /usr/local/go/bin/go build -o bot_tele . 2>/dev/null || true
+            systemctl restart bot_tele.service 2>/dev/null || true
+        fi
+
+        echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web, Bot WA, dan Bot Telegram sudah versi terbaru dari Git.${NC}\n"
+        ;;
+    status)
+        echo -e "${CYAN}=== Status Layanan Sistem Absensi JAGAT TECH ===${NC}"
+        echo -n "Nginx Web Server  : "; systemctl is-active nginx
+        echo -n "PHP 8.3 FPM       : "; systemctl is-active php8.3-fpm
+        echo -n "Database MariaDB  : "; systemctl is-active mariadb 2>/dev/null || systemctl is-active mysql
+        echo -n "WhatsApp Gateway  : "; systemctl is-active whatsapp.service 2>/dev/null || systemctl is-active gowa
+        echo -n "WhatsApp Bot Go   : "; systemctl is-active bot_wa.service 2>/dev/null || echo -e "${YELLOW}Non-aktif${NC}"
+        echo -n "Telegram Bot Go   : "; systemctl is-active bot_tele.service 2>/dev/null || echo -e "${YELLOW}Non-aktif${NC}"
+        echo -n "Queue Worker      : "
+        supervisorctl status absen-queue:* 2>/dev/null || echo -e "${YELLOW}Non-aktif${NC}"
+        ;;
+    restart)
+        echo -e "${YELLOW}Me-restart semua layanan...${NC}"
+        systemctl restart php8.3-fpm
+        systemctl restart nginx
+        systemctl restart whatsapp.service 2>/dev/null || systemctl restart gowa 2>/dev/null || true
+        systemctl restart bot_wa.service 2>/dev/null || true
+        systemctl restart bot_tele.service 2>/dev/null || true
+        supervisorctl restart absen-queue:* 2>/dev/null || true
+        echo -e "${GREEN}Semua service berhasil di-restart!${NC}"
+        ;;
+    logs)
+        case "$2" in
+            tele)
+                journalctl -u bot_tele.service -f -n 50
+                ;;
+            bot)
+                journalctl -u bot_wa.service -f -n 50
+                ;;
+            queue)
+                tail -n 50 -f "$APP_DIR/storage/logs/queue.log"
+                ;;
+            wa)
+                journalctl -u whatsapp.service -f -n 50
+                ;;
+            nginx)
+                tail -n 50 -f /var/log/nginx/absen_error.log
+                ;;
+            *)
+                tail -n 50 -f "$APP_DIR/storage/logs/laravel.log"
+                ;;
+        esac
+        ;;
+    *)
+        echo -e "${CYAN}======================================================${NC}"
+        echo -e "       ${BOLD}JAGAT TECH - COMMAND UTILITY SISTEM ABSENSI${NC}        "
+        echo -e "${CYAN}======================================================${NC}"
+        echo "Penggunaan: absen [perintah]"
+        echo ""
+        echo "Perintah yang tersedia:"
+        echo -e "  ${GREEN}absen update${NC}         - Update web, bot wa & bot tele via Git (git pull + migrate + go build)"
+        echo -e "  ${GREEN}absen status${NC}         - Cek status Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue"
+        echo -e "  ${GREEN}absen restart${NC}        - Restart seluruh service server, WA, dan Bot"
+        echo -e "  ${GREEN}absen logs${NC}           - Pantau log Laravel secara realtime"
+        echo -e "  ${GREEN}absen logs bot${NC}       - Pantau log WhatsApp Bot Go realtime"
+        echo -e "  ${GREEN}absen logs tele${NC}      - Pantau log Telegram Bot Go realtime"
+        echo -e "  ${GREEN}absen logs wa${NC}        - Pantau log WhatsApp Gateway (GOWA)"
+        echo -e "  ${GREEN}absen logs queue${NC}     - Pantau log antrian proses background (queue)"
+        echo -e "  ${GREEN}absen logs nginx${NC}     - Pantau log error web server Nginx"
+        echo ""
+        ;;
+esac
+EOF
+
+    chmod +x /usr/local/bin/absen
+    log_success "Command '${C_BOLD}absen${C_RESET}' berhasil dibuat di /usr/local/bin/absen."
+}
+
+# --- Ringkasan Hasil Akhir ---
+show_summary() {
+    local wa_status="Non-aktif"
+    if systemctl is-active --quiet whatsapp.service 2>/dev/null || systemctl is-active --quiet gowa 2>/dev/null; then
+        wa_status="${C_GREEN}Aktif (Running)${C_RESET}"
+    fi
+
+    local bot_status="Non-aktif"
+    if systemctl is-active --quiet bot_wa.service 2>/dev/null; then
+        bot_status="${C_GREEN}Aktif (Running)${C_RESET}"
+    fi
+
+    local tele_status="Non-aktif"
+    if systemctl is-active --quiet bot_tele.service 2>/dev/null; then
+        tele_status="${C_GREEN}Aktif (Running)${C_RESET}"
+    fi
+
+    echo ""
+    echo -e "${C_GREEN}${C_BOLD}"
+    cat << "EOF"
+  ███████╗███████╗██╗     ███████╗███████╗ █████╗ ██╗
+  ██╔════╝██╔════╝██║     ██╔════╝██╔════╝██╔══██╗██║
+  ███████╗█████╗  ██║     █████╗  ███████╗███████║██║
+  ╚════██║██╔══╝  ██║     ██╔══╝  ╚════██║██╔══██║██║
+  ███████║███████╗███████╗███████╗███████║██║  ██║██║
+  ╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝
+EOF
+    echo -e "${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}==============================================================================${C_RESET}"
+    echo -e "${C_WHITE}${C_BOLD}   🎉 INSTALASI WEB ABSENSI, BOT WHATSAPP & TELEGRAM JAGAT TECH SELESAI! 🎉${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}==============================================================================${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}🌐 INFORMASI AKSES WEB ABSENSI:${C_RESET}"
+    echo -e "   • Alamat Web        : ${C_BOLD}${C_GREEN}${APP_URL}${C_RESET}"
+    echo -e "   • Direktori Web     : ${C_WHITE}${APP_DIR}${C_RESET}"
+    echo -e "   • Sumber Git        : ${C_CYAN}${GIT_REPO}${C_RESET}"
+    echo -e "   • Target Perangkat  : ${C_YELLOW}${DEVICE_TITLE}${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}📱 WHATSAPP GATEWAY (GOWA):${C_RESET}"
+    echo -e "   • Status Layanan    : ${wa_status}"
+    echo -e "   • URL Scan QR       : ${C_BOLD}${C_CYAN}http://${SERVER_IP}:${WA_PORT}${C_RESET}"
+    echo -e "   • Basic Auth User   : ${C_WHITE}${WA_USER}${C_RESET}"
+    echo -e "   • Basic Auth Pass   : ${C_YELLOW}${WA_PASS}${C_RESET}"
+    echo -e "   • Webhook Target    : ${C_CYAN}${WA_WEBHOOK_URL}${C_RESET}"
+    echo -e "   • Cara Pairing HP   : Buka URL di atas > Klik Login > Scan QR dengan WhatsApp di HP"
+    echo ""
+    echo -e "${C_BOLD}🤖 WHATSAPP BOT GO (DAEMON):${C_RESET}"
+    echo -e "   • Status Layanan    : ${bot_status}"
+    echo -e "   • Webhook Port      : ${C_WHITE}Port ${BOT_GO_PORT}/webhook${C_RESET}"
+    echo -e "   • Direktori Bot     : ${C_WHITE}${BOT_GO_DIR}${C_RESET}"
+    echo -e "   • Sumber Git        : ${C_CYAN}${BOT_GO_REPO}${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}✈️ TELEGRAM BOT GO (DAEMON):${C_RESET}"
+    echo -e "   • Status Layanan    : ${tele_status}"
+    echo -e "   • Direktori Bot     : ${C_WHITE}${BOT_TELE_DIR}${C_RESET}"
+    echo -e "   • Sumber Git        : ${C_CYAN}${BOT_TELE_REPO}${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}🗄️ KONEKSI DATABASE MARIADB:${C_RESET}"
+    echo -e "   • Database Name     : ${C_WHITE}${DB_NAME}${C_RESET}"
+    echo -e "   • Database User     : ${C_WHITE}${DB_USER}${C_RESET}"
+    echo -e "   • Database Password : ${C_YELLOW}${DB_PASS}${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}🔄 CARA UPDATE DI KEMUDIAN HARI (SANGAT MUDAH):${C_RESET}"
+    echo -e "   Cukup jalankan satu perintah ini kapan saja di terminal:"
+    echo -e "   ${C_BOLD}${C_GREEN}absen update${C_RESET}"
+    echo -e "   ${C_DIM}(Otomatis git pull web, bot wa & bot tele, composer, migrate, go build & optimize!)${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}🛠️ PERINTAH PINTAS LAINNYA:${C_RESET}"
+    echo -e "   • Cek status server : ${C_GREEN}absen status${C_RESET}"
+    echo -e "   • Restart service   : ${C_GREEN}absen restart${C_RESET}"
+    echo -e "   • Pantau log web    : ${C_GREEN}absen logs${C_RESET}"
+    echo -e "   • Pantau log bot WA : ${C_GREEN}absen logs bot${C_RESET}"
+    echo -e "   • Pantau log tele   : ${C_GREEN}absen logs tele${C_RESET}"
+    echo -e "   • Pantau log WA GW  : ${C_GREEN}absen logs wa${C_RESET}"
+    echo -e "   • Pantau log queue  : ${C_GREEN}absen logs queue${C_RESET}"
+    echo ""
+    echo -e "${C_CYAN}==============================================================================${C_RESET}"
+    echo -e "${C_DIM}Log lengkap proses instalasi tersimpan di: ${LOG_FILE}${C_RESET}"
+    echo ""
+}
+
+# --- Alur Eksekusi Utama ---
+main() {
+    show_banner
+    check_root
+    detect_system
+    check_ram_and_swap
+    collect_inputs
+
+    install_base_tools
+    install_nginx
+    install_php
+    install_database
+    install_composer_and_go
+    deploy_web_absen
+    install_gowa_whatsapp
+    deploy_bot_wa_go
+    deploy_bot_tele
+    setup_services_and_vhost
+    setup_cli_tool
+
+    show_summary
+}
+
+main "$@"
