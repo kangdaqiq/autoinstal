@@ -73,18 +73,61 @@ Installer ini menggunakan setelan default yang seragam saat Anda menekan **[ENTE
 
 ## 🚀 Cara Instalasi di Server / STB
 
-1. Masuk ke terminal VPS / STB Armbian Anda via SSH sebagai root:
-   ```bash
-   ssh root@IP_PERANGKAT_ANDA
-   ```
+Masuk ke terminal VPS / STB Armbian Anda via SSH sebagai root:
+```bash
+ssh root@IP_PERANGKAT_ANDA
+```
 
-2. Jalankan installer:
-   ```bash
-   sudo bash install.sh
-   ```
+Pilih salah satu metode instalasi di bawah ini:
 
-3. Tekan **[ENTER]** untuk menggunakan setelan default (termasuk password default `JagatTech123@`).
-4. Tunggu beberapa menit hingga proses selesai!
+### ⚡ Metode 1: One-Line Quick Install (Paling Praktis & Cepat)
+Cukup copy dan paste satu baris perintah ini ke terminal. Skrip akan langsung diunduh dan dijalankan secara otomatis:
+
+```bash
+curl -sSL -H 'Cache-Control: no-cache' "https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/quick-install.sh?v=$(date +%s)" | sudo bash
+```
+
+> 💡 **Info:** Parameter `Cache-Control` dan `?v=...` memastikan Anda selalu mendapatkan versi terbaru tanpa tertahan cache GitHub CDN.
+
+---
+
+### 📦 Metode 2: Clone via Git (Manual)
+Gunakan metode ini jika Anda ingin memeriksa skrip atau menjalankan instalasi dari repositori lokal:
+
+```bash
+# 1. Clone repositori
+git clone https://github.com/kangdaqiq/autoinstal.git
+
+# 2. Masuk ke direktori
+cd autoinstal
+
+# 3. Beri izin eksekusi & jalankan installer
+chmod +x install.sh
+sudo bash install.sh
+```
+
+---
+
+### 🤖 Metode 3: Mode Unattended (Otomatis Penuh Tanpa Tanya)
+Jika Anda ingin instalasi berjalan otomatis penuh menggunakan setelan default (`JagatTech123@`) tanpa menunggu konfirmasi tombol ENTER:
+
+- **Via Quick-Install One-Liner:**
+  ```bash
+  curl -sSL -H 'Cache-Control: no-cache' "https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/quick-install.sh?v=$(date +%s)" | sudo bash -s -- -y
+  ```
+
+- **Via Git Clone:**
+  ```bash
+  sudo bash install.sh -y
+  ```
+
+---
+
+### 📝 Langkah Saat Installer Berjalan:
+1. Skrip akan memeriksa hak akses root, sistem operasi (Debian/Armbian), dan arsitektur CPU (x86_64 / arm64).
+2. Anda akan diminta mengonfirmasi password dan setelan (Cukup tekan **[ENTER]** untuk menggunakan setelan rekomendasi default).
+3. Installer akan menampilkan animasi progress bar / spinner secara realtime untuk setiap komponen yang sedang diunduh dan dipasang.
+4. Setelah selesai, seluruh URL akses, port, dan kredensial akan ditampilkan di layar.
 
 ---
 

@@ -68,7 +68,7 @@ WA_WEBHOOK_DEFAULT="http://127.0.0.1:5000/webhook"
 log() {
     local msg="$1"
     echo -e "${msg}"
-    echo -e "${msg}" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" >> "${LOG_FILE}" 2>/dev/null || true
+    echo -e "${msg}" | sed -r "s/\x1B\[[0-9;]*[a-zA-Z]//g" >> "${LOG_FILE}" 2>/dev/null || true
 }
 
 log_info()    { log " ${ICON_INFO} ${C_WHITE}$1${C_RESET}"; }
@@ -106,8 +106,10 @@ run_task() {
     # Kembalikan kursor
     [ -t 1 ] && tput cnorm 2>/dev/null || true
 
+    set +e
     wait "$pid"
     local exit_code=$?
+    set -e
 
     if [ $exit_code -eq 0 ]; then
         if [ -t 1 ]; then
@@ -196,6 +198,7 @@ safe_read() {
         user_val=""
     fi
 
+    user_val=$(echo "$user_val" | tr -d '\r\n')
     echo "${user_val:-$default_val}"
 }
 
@@ -507,13 +510,22 @@ EOF
 
     run_task "Memulai ulang & menyalakan daemon MariaDB" "systemctl enable mariadb >> ${LOG_FILE} 2>&1 || systemctl enable mysql >> ${LOG_FILE} 2>&1; systemctl restart mariadb >> ${LOG_FILE} 2>&1 || systemctl restart mysql >> ${LOG_FILE} 2>&1"
 
-    run_task "Mengonfigurasi database '${DB_NAME}' & pengguna '${DB_USER}'" "mysql -u root <<EOF
+    # Siapkan file query SQL sementara yang bersih dan aman dari escaping / eval issues
+    local sql_tmp="/tmp/jagat_db_setup.sql"
+    cat << EOF > "${sql_tmp}"
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
+CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
+ALTER USER '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1';
 FLUSH PRIVILEGES;
-EOF"
+EOF
+    chmod 600 "${sql_tmp}"
+
+    run_task "Mengonfigurasi database '${DB_NAME}' & pengguna '${DB_USER}'" "(mariadb -u root < '${sql_tmp}' || mysql -u root < '${sql_tmp}') && rm -f '${sql_tmp}'"
+    rm -f "${sql_tmp}" 2>/dev/null || true
 
     log_success "Database '${DB_NAME}' dan pengguna '${DB_USER}' siap digunakan."
 }
