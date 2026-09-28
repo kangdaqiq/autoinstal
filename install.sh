@@ -444,7 +444,7 @@ install_php() {
 
     run_task "Sinkronisasi repository PHP Sury" "apt-get update -y"
 
-    run_task "Memasang paket PHP ${php_ver} FPM, CLI & ekstensi lengkap" "apt-get install -y php${php_ver}-fpm php${php_ver}-cli php${php_ver}-common php${php_ver}-mysql php${php_ver}-mbstring php${php_ver}-bcmath php${php_ver}-gd php${php_ver}-zip php${php_ver}-intl php${php_ver}-xml php${php_ver}-curl php${php_ver}-opcache php${php_ver}-readline php${php_ver}-pcntl"
+    run_task "Memasang paket PHP ${php_ver} FPM, CLI & ekstensi lengkap" "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' php${php_ver}-fpm php${php_ver}-cli php${php_ver}-common php${php_ver}-mysql php${php_ver}-mbstring php${php_ver}-bcmath php${php_ver}-gd php${php_ver}-zip php${php_ver}-intl php${php_ver}-xml php${php_ver}-curl php${php_ver}-opcache php${php_ver}-readline php${php_ver}-sqlite3"
 
     local fpm_ini="/etc/php/${php_ver}/fpm/php.ini"
     local cli_ini="/etc/php/${php_ver}/cli/php.ini"
