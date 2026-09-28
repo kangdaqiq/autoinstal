@@ -118,6 +118,32 @@ check_root() {
     fi
 }
 
+# --- Helper Input Aman (Bekerja Baik di Pipe curl | bash, TTY, atau Non-Interactive) ---
+safe_read() {
+    local prompt_msg="$1"
+    local default_val="$2"
+    local user_val=""
+
+    if [ "${AUTO_YES:-false}" = true ]; then
+        echo -e "${prompt_msg}${C_BOLD}${default_val}${C_RESET} ${C_DIM}(auto default)${C_RESET}" >&2
+        echo "$default_val"
+        return 0
+    fi
+
+    # Coba baca dari /dev/tty jika tersedia (misal di-pipe lewat curl/wget)
+    if [ -r /dev/tty ]; then
+        read -r -p "$prompt_msg" user_val </dev/tty 2>/dev/tty || user_val=""
+    elif [ -t 0 ]; then
+        read -r -p "$prompt_msg" user_val 2>/dev/null || user_val=""
+    else
+        # Jika benar-benar headless tanpa TTY
+        echo -e "${prompt_msg}${C_BOLD}${default_val}${C_RESET} ${C_DIM}(non-interactive default)${C_RESET}" >&2
+        user_val=""
+    fi
+
+    echo "${user_val:-$default_val}"
+}
+
 detect_server_ip() {
     SERVER_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
     if [ -z "$SERVER_IP" ]; then
@@ -214,7 +240,8 @@ detect_system() {
     # Pastikan turunan debian
     if [[ "$OS_NAME" != "debian" && "$OS_NAME" != "ubuntu" && "$IS_ARMBIAN" != true && "$ID_LIKE" != *"debian"* ]]; then
         log_warn "Sistem Anda terdeteksi sebagai '$OS_NAME'. Script ini dikhususkan untuk Debian / Armbian."
-        read -r -p "Tetap lanjutkan instalasi? [y/N]: " continue_confirm
+        local continue_confirm
+        continue_confirm=$(safe_read "Tetap lanjutkan instalasi? [y/N]: " "N")
         case "$continue_confirm" in
             [yY][eE][sS]|[yY]) ;;
             *) exit 1 ;;
@@ -259,30 +286,21 @@ collect_inputs() {
     # 1. Domain / Host
     echo -e "${ICON_ARROW} ${C_BOLD}Domain atau IP Server:${C_RESET}"
     echo -e "   ${C_DIM}(Contoh: absen.sekolah.sch.id atau IP: ${SERVER_IP})${C_RESET}"
-    read -r -p "   Domain/IP [${SERVER_IP}]: " input_domain
-    APP_DOMAIN="${input_domain:-$SERVER_IP}"
+    APP_DOMAIN=$(safe_read "   Domain/IP [${SERVER_IP}]: " "${SERVER_IP}")
     APP_URL="http://${APP_DOMAIN}"
 
     # 2. Database Name & User
     echo ""
     echo -e "${ICON_GEAR} ${C_BOLD}Pengaturan Database MariaDB:${C_RESET}"
-    read -r -p "   Nama Database [${DB_NAME_DEFAULT}]: " input_db_name
-    DB_NAME="${input_db_name:-$DB_NAME_DEFAULT}"
-
-    read -r -p "   User Database [${DB_USER_DEFAULT}]: " input_db_user
-    DB_USER="${input_db_user:-$DB_USER_DEFAULT}"
-
-    read -r -p "   Password Database [${DEFAULT_PASSWORD}]: " input_db_pass
-    DB_PASS="${input_db_pass:-$DEFAULT_PASSWORD}"
+    DB_NAME=$(safe_read "   Nama Database [${DB_NAME_DEFAULT}]: " "${DB_NAME_DEFAULT}")
+    DB_USER=$(safe_read "   User Database [${DB_USER_DEFAULT}]: " "${DB_USER_DEFAULT}")
+    DB_PASS=$(safe_read "   Password Database [${DEFAULT_PASSWORD}]: " "${DEFAULT_PASSWORD}")
 
     # 3. WhatsApp Gateway Password & Webhook
     echo ""
     echo -e "${ICON_GEAR} ${C_BOLD}Pengaturan WhatsApp Gateway (GOWA):${C_RESET}"
-    read -r -p "   Password WhatsApp Gateway [${DEFAULT_PASSWORD}]: " input_wa_pass
-    WA_PASS="${input_wa_pass:-$DEFAULT_PASSWORD}"
-
-    read -r -p "   Webhook URL WhatsApp [${WA_WEBHOOK_DEFAULT}]: " input_wa_webhook
-    WA_WEBHOOK_URL="${input_wa_webhook:-$WA_WEBHOOK_DEFAULT}"
+    WA_PASS=$(safe_read "   Password WhatsApp Gateway [${DEFAULT_PASSWORD}]: " "${DEFAULT_PASSWORD}")
+    WA_WEBHOOK_URL=$(safe_read "   Webhook URL WhatsApp [${WA_WEBHOOK_DEFAULT}]: " "${WA_WEBHOOK_DEFAULT}")
 
     echo ""
     echo -e "──────────────────────────────────────────────────────────────────────────────"
@@ -296,7 +314,8 @@ collect_inputs() {
     echo -e "  • Engine Stack   : ${C_WHITE}Nginx, PHP 8.3, MariaDB, Composer, Golang, GOWA${C_RESET}"
     echo -e "──────────────────────────────────────────────────────────────────────────────"
     
-    read -r -p "Lanjutkan proses instalasi sekarang? [Y/n]: " confirm
+    local confirm
+    confirm=$(safe_read "Lanjutkan proses instalasi sekarang? [Y/n]: " "Y")
     case "$confirm" in
         [nN][oO]|[nN])
             log_warn "Instalasi dibatalkan."
@@ -1258,6 +1277,15 @@ EOF
 
 # --- Alur Eksekusi Utama ---
 main() {
+    AUTO_YES=false
+    for arg in "$@"; do
+        case "$arg" in
+            -y|--yes|--unattended)
+                AUTO_YES=true
+                ;;
+        esac
+    done
+
     show_banner
     check_root
     detect_system

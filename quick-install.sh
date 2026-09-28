@@ -20,5 +20,12 @@ else
 fi
 
 chmod +x "${TMP_DIR}/install.sh"
-bash "${TMP_DIR}/install.sh" "$@"
+
+# Sambungkan kembali stdin ke terminal /dev/tty agar input interaktif berfungsi saat di-pipe
+if [ -r /dev/tty ]; then
+    bash "${TMP_DIR}/install.sh" "$@" </dev/tty
+else
+    bash "${TMP_DIR}/install.sh" "$@"
+fi
+
 rm -rf "${TMP_DIR}"
