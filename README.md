@@ -62,6 +62,7 @@ Auto Installer resmi dari **JAGAT TECH** untuk memasang seluruh kebutuhan server
 ## 🔐 Akun & Parameter Default
 
 Installer ini menggunakan setelan default yang seragam saat Anda menekan **[ENTER]**:
+- **Domain / Host:** `localhost` (bisa diakses via `http://localhost` maupun `http://IP_SERVER` di LAN)
 - **Default Password:** `JagatTech123@`
 - **Database MariaDB:** User `absen_user` | Password `JagatTech123@` | DB `absen_jagat`
 - **WhatsApp Gateway:**

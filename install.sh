@@ -53,6 +53,7 @@ BOT_GO_PORT="5000"
 BOT_TELE_REPO="https://github.com/kangdaqiq/bot_tele.git"
 PHP_DEFAULT_VER="8.3"
 WEB_USER="www-data"
+DEFAULT_DOMAIN="localhost"
 
 DB_HOST="127.0.0.1"
 DB_PORT="3306"
@@ -343,8 +344,8 @@ collect_inputs() {
 
     # 1. Domain / Host
     echo -e "${ICON_ARROW} ${C_BOLD}Domain atau IP Server:${C_RESET}"
-    echo -e "   ${C_DIM}(Contoh: absen.sekolah.sch.id atau IP: ${SERVER_IP})${C_RESET}"
-    APP_DOMAIN=$(safe_read "   Domain/IP [${SERVER_IP}]: " "${SERVER_IP}")
+    echo -e "   ${C_DIM}(IP Terdeteksi: ${SERVER_IP} | Default: ${DEFAULT_DOMAIN})${C_RESET}"
+    APP_DOMAIN=$(safe_read "   Domain/IP [${DEFAULT_DOMAIN}]: " "${DEFAULT_DOMAIN}")
     APP_URL="http://${APP_DOMAIN}"
 
     # 2. Database Name & User
@@ -927,11 +928,16 @@ setup_services_and_vhost() {
 
     # Nginx VHost
     local vhost_file="/etc/nginx/sites-available/absen.conf"
+    local nginx_server_name="${APP_DOMAIN}"
+    if [ "${APP_DOMAIN}" = "localhost" ] || [ "${APP_DOMAIN}" = "127.0.0.1" ]; then
+        nginx_server_name="localhost _"
+    fi
+
     cat << EOF > "${vhost_file}"
 server {
     listen 80;
     listen [::]:80;
-    server_name ${APP_DOMAIN};
+    server_name ${nginx_server_name};
     root ${APP_DIR}/public;
 
     add_header X-Frame-Options "SAMEORIGIN";
