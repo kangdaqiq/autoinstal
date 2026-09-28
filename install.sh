@@ -327,7 +327,9 @@ check_ram_and_swap() {
             if ! grep -q '/swapfile' /etc/fstab; then
                 echo '/swapfile none swap sw 0 0' >> /etc/fstab
             fi
-            log_success "Swap 2GB berhasil diaktifkan!"
+            sysctl -w vm.swappiness=10 >> "${LOG_FILE}" 2>&1 || true
+            echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
+            log_success "Swap 2GB berhasil diaktifkan (eMMC Safe: swappiness=10)!"
         fi
     else
         log_success "Kapasitas memori mencukupi."
@@ -1144,6 +1146,39 @@ case "$1" in
                 ;;
         esac
         ;;
+    swap-delete|swap-off|del-swap)
+        echo -e "${YELLOW}Menonaktifkan dan menghapus Swap File 2GB...${NC}"
+        if [ -f /swapfile ] || grep -q '/swapfile' /proc/swaps 2>/dev/null; then
+            swapoff /swapfile 2>/dev/null || true
+            sed -i '/\/swapfile/d' /etc/fstab 2>/dev/null || true
+            rm -f /swapfile 2>/dev/null || true
+            echo -e "${GREEN}${BOLD}✔ Swapfile 2GB berhasil dinonaktifkan dan dihapus dari penyimpanan internal eMMC!${NC}"
+            echo -e "${CYAN}Sisa ruang penyimpanan saat ini:${NC}"
+            df -h /
+        else
+            echo -e "${GREEN}Swapfile (/swapfile) tidak aktif atau sudah dihapus sebelumnya.${NC}"
+        fi
+        ;;
+    swap-create|swap-on)
+        echo -e "${YELLOW}Membuat kembali Swap File 2GB (Aman untuk eMMC)...${NC}"
+        if [ ! -f /swapfile ]; then
+            fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            if ! grep -q '/swapfile' /etc/fstab; then
+                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+            fi
+            sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+            echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
+            echo -e "${GREEN}${BOLD}✔ Swapfile 2GB berhasil dibuat dan diaktifkan (swappiness=10)!${NC}"
+            free -h
+        else
+            swapon /swapfile 2>/dev/null || true
+            echo -e "${GREEN}Swapfile sudah ada dan aktif.${NC}"
+            free -h
+        fi
+        ;;
     *)
         echo -e "${CYAN}======================================================${NC}"
         echo -e "       ${BOLD}JAGAT TECH - COMMAND UTILITY SISTEM ABSENSI${NC}        "
@@ -1154,6 +1189,8 @@ case "$1" in
         echo -e "  ${GREEN}absen update${NC}         - Update web, bot wa & bot tele via Git (git pull + migrate + go build)"
         echo -e "  ${GREEN}absen status${NC}         - Cek status Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue"
         echo -e "  ${GREEN}absen restart${NC}        - Restart seluruh service server, WA, dan Bot"
+        echo -e "  ${GREEN}absen swap-delete${NC}    - Hapus Swap File 2GB untuk melegakan penyimpanan internal eMMC"
+        echo -e "  ${GREEN}absen swap-create${NC}    - Buat kembali Swap File 2GB jika sewaktu-waktu dibutuhkan"
         echo -e "  ${GREEN}absen logs${NC}           - Pantau log Laravel secara realtime"
         echo -e "  ${GREEN}absen logs bot${NC}       - Pantau log WhatsApp Bot Go realtime"
         echo -e "  ${GREEN}absen logs tele${NC}      - Pantau log Telegram Bot Go realtime"
@@ -1235,6 +1272,10 @@ EOF
     echo -e "   Cukup jalankan satu perintah ini kapan saja di terminal:"
     echo -e "   ${C_BOLD}${C_GREEN}absen update${C_RESET}"
     echo -e "   ${C_DIM}(Otomatis git pull web, bot wa & bot tele, composer, migrate, go build & optimize!)${C_RESET}"
+    echo ""
+    echo -e "${C_BOLD}💾 PENGELOLAAN MEMORI & STORAGE EMMC:${C_RESET}"
+    echo -e "   • Hapus Swap 2GB    : ${C_GREEN}absen swap-delete${C_RESET} ${C_DIM}(Melegakan kembali 2GB ruang eMMC)${C_RESET}"
+    echo -e "   • Buat Swap 2GB     : ${C_GREEN}absen swap-create${C_RESET} ${C_DIM}(Aktifkan kembali jika butuh swap)${C_RESET}"
     echo ""
     echo -e "${C_BOLD}🛠️ PERINTAH PINTAS LAINNYA:${C_RESET}"
     echo -e "   • Cek status server : ${C_GREEN}absen status${C_RESET}"

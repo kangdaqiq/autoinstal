@@ -173,6 +173,8 @@ Perintah di atas secara otomatis akan:
 ```bash
 absen status        # Cek status kesehatan Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue
 absen restart       # Restart seluruh service server, WA, dan kedua Bot
+absen swap-delete   # Hapus file swap 2GB untuk melegakan kembali ruang penyimpanan internal eMMC
+absen swap-create   # Buat kembali swap file 2GB jika sewaktu-waktu dibutuhkan (eMMC Safe)
 absen logs          # Pantau log Laravel realtime
 absen logs bot      # Pantau log WhatsApp Bot Go realtime
 absen logs tele     # Pantau log Telegram Bot Go realtime
