@@ -1042,14 +1042,14 @@ After=sys-subsystem-gpio.devices basic.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'command -v gpioset >/dev/null 2>&1 && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0) || true'
 RemainAfterExit=yes
+ExecStart=/bin/sh -c 'command -v gpioset >/dev/null 2>&1 && (gpioset -z -c gpiochip1 73=0 2>/dev/null || gpioset -m exit gpiochip1 73=0 2>/dev/null || timeout 2s gpioset -c gpiochip1 73=0 2>/dev/null || timeout 2s gpioset gpiochip1 73=0 2>/dev/null || true)'
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-        # Cadangan via /etc/rc.local
+        # Cadangan via /etc/rc.local (dijalankan di background '&' agar boot tidak macet)
         if [ ! -f /etc/rc.local ]; then
             cat << 'EOF' > /etc/rc.local
 #!/bin/sh -e
@@ -1059,10 +1059,10 @@ EOF
         fi
 
         if ! grep -q 'gpiochip1 73=0' /etc/rc.local; then
-            sed -i '/^exit 0/i command -v gpioset >/dev/null 2>&1 && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0) || true' /etc/rc.local
+            sed -i '/^exit 0/i (command -v gpioset >/dev/null 2>&1 && (gpioset -z -c gpiochip1 73=0 2>/dev/null || gpioset -m exit gpiochip1 73=0 2>/dev/null || timeout 2s gpioset -c gpiochip1 73=0 2>/dev/null || true)) & \n' /etc/rc.local
         fi
 
-        run_task "Mengaktifkan service startup GPIO Armbian (gpiochip1 73=0)" "systemctl daemon-reload && systemctl enable armbian-gpio.service && (gpioset -c gpiochip1 73=0 || gpioset gpiochip1 73=0 || true)"
+        run_task "Mengaktifkan service startup GPIO Armbian (gpiochip1 73=0)" "systemctl daemon-reload && systemctl enable armbian-gpio.service && (gpioset -z -c gpiochip1 73=0 2>/dev/null || gpioset -m exit gpiochip1 73=0 2>/dev/null || timeout 2s gpioset -c gpiochip1 73=0 2>/dev/null || timeout 2s gpioset gpiochip1 73=0 2>/dev/null || true)"
     fi
 
     log_success "Nginx VirtualHost, Worker Queue, dan Cron Scheduler berhasil aktif!"
