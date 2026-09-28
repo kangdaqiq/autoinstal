@@ -90,7 +90,7 @@ run_task() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [RUN_TASK] ${title}" >> "${LOG_FILE}" 2>&1
 
     # Jalankan perintah di background terputus dari stdin agar debconf/dpkg tidak hang
-    eval "$command_str" < /dev/null >> "${LOG_FILE}" 2>&1 &
+    ( trap - ERR; eval "$command_str" ) < /dev/null >> "${LOG_FILE}" 2>&1 &
     pid=$!
 
     # Sembunyikan kursor jika di terminal
@@ -1019,9 +1019,8 @@ EOF
 
     run_task "Menyiapkan & menyalakan antrian Supervisor (absen-queue)" "supervisorctl reread && supervisorctl update && (supervisorctl start absen-queue:* || true)"
 
-    # Crontab Laravel Scheduler
-    local cron_job="* * * * * cd ${APP_DIR} && php artisan schedule:run >> /dev/null 2>&1"
-    run_task "Memasang penjadwal otomatis Crontab Laravel" "(crontab -u ${WEB_USER} -l 2>/dev/null | grep -v 'artisan schedule:run'; echo '$cron_job') | crontab -u ${WEB_USER} -"
+    # Crontab Laravel Scheduler (Menggunakan direktori sistem /etc/cron.d/ yang stabil & bebas error pipe)
+    run_task "Memasang penjadwal otomatis Crontab Laravel" "echo '* * * * * ${WEB_USER} cd ${APP_DIR} && php artisan schedule:run >> /dev/null 2>&1' > /etc/cron.d/absen-scheduler && chmod 644 /etc/cron.d/absen-scheduler"
 
     log_success "Nginx VirtualHost, Worker Queue, dan Cron Scheduler berhasil aktif!"
 }
