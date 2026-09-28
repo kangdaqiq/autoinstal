@@ -16,7 +16,7 @@
 #  Provider      : JAGAT TECH
 # ==============================================================================
 
-set -eo pipefail
+set -E -eo pipefail
 
 # --- Warna Tampilan ---
 C_RESET="\033[0m"
@@ -82,25 +82,25 @@ run_task() {
     local title="$1"
     local command_str="$2"
     local pid
-    local spin_chars=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local spin_chars=('/' '-' '\' '|')
     local i=0
 
     # Catat ke file log
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [RUN_TASK] ${title}" >> "${LOG_FILE}" 2>&1
 
-    # Jalankan perintah di background dan redirect output ke log file
-    eval "$command_str" >> "${LOG_FILE}" 2>&1 &
+    # Jalankan perintah di background terputus dari stdin agar debconf/dpkg tidak hang
+    eval "$command_str" < /dev/null >> "${LOG_FILE}" 2>&1 &
     pid=$!
 
     # Sembunyikan kursor jika di terminal
     [ -t 1 ] && tput civis 2>/dev/null || true
 
     while kill -0 "$pid" 2>/dev/null; do
-        i=$(( (i + 1) % 10 ))
+        i=$(( (i + 1) % 4 ))
         if [ -t 1 ]; then
-            printf "\r  ${C_CYAN}${spin_chars[$i]}${C_RESET} ${C_WHITE}%s...${C_RESET}   " "$title"
+            printf "\r  ${C_CYAN}[%s]${C_RESET} ${C_WHITE}%s...${C_RESET}\033[K" "${spin_chars[$i]}" "$title"
         fi
-        sleep 0.1
+        sleep 0.15
     done
 
     # Kembalikan kursor
@@ -118,10 +118,13 @@ run_task() {
         return 0
     else
         if [ -t 1 ]; then
-            printf "\r  ${ICON_CROSS} ${C_RED}%s gagal! Periksa log: ${LOG_FILE}${C_RESET}\033[K\n" "$title"
+            printf "\r  ${ICON_CROSS} ${C_RED}%s gagal! (Exit Code: %s)${C_RESET}\033[K\n" "$title" "$exit_code"
         else
-            echo "  ✖ $title gagal! Periksa log: $LOG_FILE"
+            echo "  ✖ $title gagal! (Exit Code: $exit_code)"
         fi
+        echo -e "${C_YELLOW}--- 12 Baris Terakhir Error (${LOG_FILE}) ---${C_RESET}"
+        tail -n 12 "${LOG_FILE}" 2>/dev/null || true
+        echo -e "${C_YELLOW}------------------------------------------------${C_RESET}"
         return $exit_code
     fi
 }
@@ -132,6 +135,9 @@ handle_error() {
     if [ $exit_code -ne 0 ]; then
         echo ""
         log_error "Instalasi terhenti karena error di baris $1 (Exit Code: $exit_code)."
+        echo -e "${C_YELLOW}--- Rincian Log Error (/var/log/jagattech_install.log) ---${C_RESET}"
+        tail -n 15 "${LOG_FILE}" 2>/dev/null || true
+        echo -e "${C_YELLOW}------------------------------------------------------------${C_RESET}"
         log_warn "Silakan periksa log lengkap di: ${C_WHITE}${LOG_FILE}${C_RESET}"
     fi
 }
@@ -380,8 +386,22 @@ install_base_tools() {
     log_step "[1/11] Memperbarui Repository APT & Menginstal Utilitas Dasar..."
     export DEBIAN_FRONTEND=noninteractive
     
+    # Pulihkan dpkg jika ada proses interupsi sebelumnya
+    dpkg --configure -a >> "${LOG_FILE}" 2>&1 || true
+
     run_task "Sinkronisasi index paket repository APT (apt update)" "apt-get update -y"
-    run_task "Memasang utilitas dasar (curl, git, supervisor, ufw, build-essential)" "apt-get install -y curl wget git unzip zip tar ca-certificates gnupg lsb-release apt-transport-https software-properties-common build-essential ufw cron supervisor fail2ban jq"
+    
+    # 1. Paket Inti Wajib (Tersedia universal di Debian/Armbian)
+    run_task "Memasang utilitas inti (curl, git, supervisor, build-essential, jq)" \
+        "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' curl wget git unzip zip tar ca-certificates gnupg lsb-release build-essential cron supervisor jq"
+
+    # 2. Firewall UFW
+    run_task "Memasang paket firewall UFW" \
+        "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' ufw || true"
+
+    # 3. Paket Tambahan (software-properties-common, fail2ban, apt-transport-https)
+    run_task "Memasang paket utilitas pelengkap" \
+        "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' software-properties-common fail2ban apt-transport-https >> ${LOG_FILE} 2>&1 || true"
     
     log_success "Paket utilitas dasar & git siap digunakan."
 }
