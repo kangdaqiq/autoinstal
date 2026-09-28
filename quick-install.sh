@@ -5,18 +5,19 @@
 set -e
 
 TMP_DIR=$(mktemp -d)
-INSTALLER_URL="https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/install.sh"
+CACHE_BUSTER=$(date +%s)
+INSTALLER_URL="https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/install.sh?v=${CACHE_BUSTER}"
 
 echo "=== JAGAT TECH AUTO INSTALLER ==="
-echo "Mengunduh script installer..."
+echo "Mengunduh script installer versi terbaru (bypass cache)..."
 
 if command -v curl &> /dev/null; then
-    curl -sSL "$INSTALLER_URL" -o "${TMP_DIR}/install.sh"
+    curl -sSL -H 'Cache-Control: no-cache, no-store, must-revalidate' -H 'Pragma: no-cache' "$INSTALLER_URL" -o "${TMP_DIR}/install.sh"
 elif command -v wget &> /dev/null; then
-    wget -qO "${TMP_DIR}/install.sh" "$INSTALLER_URL"
+    wget --no-cache -qO "${TMP_DIR}/install.sh" "$INSTALLER_URL"
 else
     apt-get update -y && apt-get install -y curl
-    curl -sSL "$INSTALLER_URL" -o "${TMP_DIR}/install.sh"
+    curl -sSL -H 'Cache-Control: no-cache, no-store, must-revalidate' -H 'Pragma: no-cache' "$INSTALLER_URL" -o "${TMP_DIR}/install.sh"
 fi
 
 chmod +x "${TMP_DIR}/install.sh"
