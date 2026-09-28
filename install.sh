@@ -407,6 +407,11 @@ install_base_tools() {
     run_task "Memasang paket utilitas pelengkap" \
         "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' software-properties-common fail2ban apt-transport-https >> ${LOG_FILE} 2>&1 || true"
     
+    # Konfigurasi Git untuk stabilitas koneksi & shallow fetch hemat bandwidth
+    git config --global http.postBuffer 524288000 2>/dev/null || true
+    git config --global http.version HTTP/1.1 2>/dev/null || true
+    git config --global core.compression 0 2>/dev/null || true
+
     log_success "Paket utilitas dasar & git siap digunakan."
 }
 
@@ -581,13 +586,15 @@ deploy_web_absen() {
     log_step "[6/11] Mengunduh & Memasang Web Absen via Git (${GIT_REPO})..."
 
     git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+    git config --global http.postBuffer 524288000 2>/dev/null || true
+    git config --global http.version HTTP/1.1 2>/dev/null || true
 
     if [ -d "${APP_DIR}/.git" ]; then
         run_task "Menarik commit terbaru Web Absen via Git (git pull)" "cd '${APP_DIR}' && (git pull origin main || git pull origin master)"
     else
         mkdir -p "${APP_DIR}"
         rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
-        run_task "Mengunduh source code Web Absen dari GitHub (${GIT_REPO})" "git clone '${GIT_REPO}' '${APP_DIR}'"
+        run_task "Mengunduh source code Web Absen dari GitHub (Shallow --depth 1)" "git clone --depth 1 --single-branch '${GIT_REPO}' '${APP_DIR}'"
     fi
 
     cd "${APP_DIR}"
@@ -770,7 +777,7 @@ deploy_bot_wa_go() {
     else
         mkdir -p "${BOT_GO_DIR}"
         rm -rf "${BOT_GO_DIR:?}"/* "${BOT_GO_DIR:?}"/.[!.]* 2>/dev/null || true
-        run_task "Mengunduh source code WhatsApp Bot Go dari GitHub" "git clone '${BOT_GO_REPO}' '${BOT_GO_DIR}'"
+        run_task "Mengunduh source code WhatsApp Bot Go dari GitHub (Shallow --depth 1)" "git clone --depth 1 --single-branch '${BOT_GO_REPO}' '${BOT_GO_DIR}'"
     fi
 
     cd "${BOT_GO_DIR}"
@@ -859,7 +866,7 @@ deploy_bot_tele() {
     else
         mkdir -p "${BOT_TELE_DIR}"
         rm -rf "${BOT_TELE_DIR:?}"/* "${BOT_TELE_DIR:?}"/.[!.]* 2>/dev/null || true
-        run_task "Mengunduh source code Telegram Bot Go dari GitHub" "git clone '${BOT_TELE_REPO}' '${BOT_TELE_DIR}'"
+        run_task "Mengunduh source code Telegram Bot Go dari GitHub (Shallow --depth 1)" "git clone --depth 1 --single-branch '${BOT_TELE_REPO}' '${BOT_TELE_DIR}'"
     fi
 
     cd "${BOT_TELE_DIR}"
