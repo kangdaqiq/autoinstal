@@ -51,33 +51,92 @@ case "$1" in
             supervisorctl restart absen-queue:* 2>/dev/null || true
         fi
 
-        # 2. Update Bot WhatsApp Go
+        raw_arch=$(uname -m)
+        arch_suffix="linux-amd64"
+        case "$raw_arch" in
+            x86_64)
+                arch_suffix="linux-amd64"
+                ;;
+            aarch64|arm64)
+                arch_suffix="linux-arm64"
+                ;;
+            i386|i686)
+                arch_suffix="linux-x86_32"
+                ;;
+            *)
+                arch_suffix="linux-amd64"
+                ;;
+        esac
+
+        # 2. Update Bot WhatsApp Go (Compiled Binary)
         if [ -d "$BOT_WA_DIR" ]; then
-            echo -e "${YELLOW}▶ [2/3] Menarik commit terbaru Bot WhatsApp Go (git pull & build)...${NC}"
-            cd "$BOT_WA_DIR" || exit 1
-            git config --global --add safe.directory "$BOT_WA_DIR" 2>/dev/null || true
-            git pull origin main || git pull origin master
-            export GOROOT=/usr/local/go
-            export PATH=$PATH:/usr/local/go/bin
-            /usr/local/go/bin/go mod tidy 2>/dev/null || true
-            /usr/local/go/bin/go build -o bot_wa main.go 2>/dev/null || true
-            systemctl restart bot_wa.service 2>/dev/null || true
+            echo -e "${YELLOW}▶ [2/3] Mengunduh binary compiled terbaru Bot WhatsApp Go (${arch_suffix})...${NC}"
+            bot_wa_url="https://github.com/kangdaqiq/bot-go/releases/latest/download/bot-${arch_suffix}.zip"
+            tmp_zip="/tmp/bot_wa_${arch_suffix}.zip"
+            tmp_extract="/tmp/bot_wa_extract"
+            rm -rf "$tmp_extract" "$tmp_zip"
+            mkdir -p "$tmp_extract"
+            if curl -sSL -f "$bot_wa_url" -o "$tmp_zip" && unzip -q -o "$tmp_zip" -d "$tmp_extract"; then
+                found_bin=$(find "$tmp_extract" -type f -name "bot_wa" -o -name "bot_wa.exe" | head -n1)
+                [ -z "$found_bin" ] && found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.example" ! -name "*.zip" ! -name "*.bat" | head -n1)
+                if [ -n "$found_bin" ]; then
+                    systemctl stop bot_wa.service 2>/dev/null || true
+                    cp -f "$found_bin" "$BOT_WA_DIR/bot_wa"
+                    chmod +x "$BOT_WA_DIR/bot_wa"
+                    systemctl restart bot_wa.service 2>/dev/null || true
+                    echo -e "${GREEN}  ✔ Binary bot_wa berhasil diperbarui ke versi release terbaru!${NC}"
+                fi
+                rm -rf "$tmp_extract" "$tmp_zip"
+            elif [ -d "$BOT_WA_DIR/.git" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+                echo -e "${YELLOW}  Menggunakan fallback: git pull & go build...${NC}"
+                cd "$BOT_WA_DIR" || exit 1
+                git config --global --add safe.directory "$BOT_WA_DIR" 2>/dev/null || true
+                git pull origin main || git pull origin master
+                export GOROOT=/usr/local/go
+                export PATH=$PATH:/usr/local/go/bin
+                /usr/local/go/bin/go mod tidy 2>/dev/null || true
+                /usr/local/go/bin/go build -o bot_wa main.go 2>/dev/null || true
+                systemctl restart bot_wa.service 2>/dev/null || true
+            else
+                echo -e "${RED}  ✗ Gagal mengunduh binary bot_wa dari GitHub Releases.${NC}"
+            fi
         fi
 
-        # 3. Update Bot Telegram Go
+        # 3. Update Bot Telegram Go (Compiled Binary)
         if [ -d "$BOT_TELE_DIR" ]; then
-            echo -e "${YELLOW}▶ [3/3] Menarik commit terbaru Bot Telegram Go (git pull & build)...${NC}"
-            cd "$BOT_TELE_DIR" || exit 1
-            git config --global --add safe.directory "$BOT_TELE_DIR" 2>/dev/null || true
-            git pull origin main || git pull origin master
-            export GOROOT=/usr/local/go
-            export PATH=$PATH:/usr/local/go/bin
-            /usr/local/go/bin/go mod tidy 2>/dev/null || true
-            /usr/local/go/bin/go build -o bot_tele . 2>/dev/null || true
-            systemctl restart bot_tele.service 2>/dev/null || true
+            echo -e "${YELLOW}▶ [3/3] Mengunduh binary compiled terbaru Bot Telegram Go (${arch_suffix})...${NC}"
+            bot_tele_url="https://github.com/kangdaqiq/bot_tele/releases/latest/download/bot_tele-${arch_suffix}.zip"
+            tmp_zip="/tmp/bot_tele_${arch_suffix}.zip"
+            tmp_extract="/tmp/bot_tele_extract"
+            rm -rf "$tmp_extract" "$tmp_zip"
+            mkdir -p "$tmp_extract"
+            if curl -sSL -f "$bot_tele_url" -o "$tmp_zip" && unzip -q -o "$tmp_zip" -d "$tmp_extract"; then
+                found_bin=$(find "$tmp_extract" -type f -name "bot_tele" -o -name "bot_tele.exe" | head -n1)
+                [ -z "$found_bin" ] && found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.example" ! -name "*.zip" ! -name "*.bat" | head -n1)
+                if [ -n "$found_bin" ]; then
+                    systemctl stop bot_tele.service 2>/dev/null || true
+                    cp -f "$found_bin" "$BOT_TELE_DIR/bot_tele"
+                    chmod +x "$BOT_TELE_DIR/bot_tele"
+                    systemctl restart bot_tele.service 2>/dev/null || true
+                    echo -e "${GREEN}  ✔ Binary bot_tele berhasil diperbarui ke versi release terbaru!${NC}"
+                fi
+                rm -rf "$tmp_extract" "$tmp_zip"
+            elif [ -d "$BOT_TELE_DIR/.git" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+                echo -e "${YELLOW}  Menggunakan fallback: git pull & go build...${NC}"
+                cd "$BOT_TELE_DIR" || exit 1
+                git config --global --add safe.directory "$BOT_TELE_DIR" 2>/dev/null || true
+                git pull origin main || git pull origin master
+                export GOROOT=/usr/local/go
+                export PATH=$PATH:/usr/local/go/bin
+                /usr/local/go/bin/go mod tidy 2>/dev/null || true
+                /usr/local/go/bin/go build -o bot_tele . 2>/dev/null || true
+                systemctl restart bot_tele.service 2>/dev/null || true
+            else
+                echo -e "${RED}  ✗ Gagal mengunduh binary bot_tele dari GitHub Releases.${NC}"
+            fi
         fi
 
-        echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web, Bot WA, dan Bot Telegram sudah versi terbaru dari Git.${NC}\n"
+        echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web dan Bot (WA & Telegram) sudah menggunakan versi terbaru.${NC}\n"
         ;;
     status)
         echo -e "${CYAN}=== Status Layanan Sistem Absensi JAGAT TECH ===${NC}"
@@ -153,7 +212,7 @@ case "$1" in
         echo "Penggunaan: absen [perintah]"
         echo ""
         echo "Perintah yang tersedia:"
-        echo -e "  ${GREEN}absen update${NC}         - Update web, bot wa & bot tele via Git (git pull + migrate + go build)"
+        echo -e "  ${GREEN}absen update${NC}         - Update web via Git & update compiled binary bot wa & bot tele"
         echo -e "  ${GREEN}absen status${NC}         - Cek status Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue"
         echo -e "  ${GREEN}absen restart${NC}        - Restart seluruh service server, WA, dan Bot"
         echo -e "  ${GREEN}absen backup${NC}         - Jalankan backup database dan storage saat ini"

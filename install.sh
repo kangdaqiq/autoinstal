@@ -254,6 +254,10 @@ detect_system() {
             ARCH_NAME="armhf"
             GO_ARCH="armv6l"
             ;;
+        i386|i686)
+            ARCH_NAME="386"
+            GO_ARCH="386"
+            ;;
         *)
             log_error "Arsitektur '${RAW_ARCH}' tidak didukung. Installer ini hanya mendukung x86_64 dan Armbian Amlogic S905X."
             exit 1
@@ -556,37 +560,26 @@ install_composer_and_go() {
     fi
     log_success "Composer 2 terpasang di /usr/local/bin/composer."
 
-    # Golang
-    local go_ver="go1.23.1"
-    local need_install_go=true
-
+    # Golang compiler tidak lagi dipaksa diunduh (~400MB) karena Bot WhatsApp & Telegram menggunakan precompiled binary.
     if command -v /usr/local/go/bin/go &> /dev/null; then
         local current_go
         current_go=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}')
-        if [ -n "$current_go" ]; then
-            need_install_go=false
-            log_success "Golang Engine (${current_go}) sudah terpasang."
-        fi
+        log_success "Golang Engine (${current_go}) terdeteksi di sistem."
+    else
+        log_info "Kompilasi lokal dilewati: WhatsApp Bot & Telegram Bot menggunakan binary compiled siap pakai."
     fi
 
-    if [ "$need_install_go" = true ]; then
-        local go_archive="${go_ver}.linux-${GO_ARCH}.tar.gz"
-        local go_url="https://go.dev/dl/${go_archive}"
-        run_task "Mengunduh & mengekstrak Golang Engine (${go_ver} - ${GO_ARCH})" "curl -sSL -f --connect-timeout 15 '$go_url' -o '/tmp/${go_archive}' && rm -rf /usr/local/go && tar -C /usr/local -xzf '/tmp/${go_archive}' && rm -f '/tmp/${go_archive}' || apt-get install -y golang-go"
-    fi
-
-    # Setup PATH Go
-    cat << 'EOF' > /etc/profile.d/golang.sh
+    if [ -d "/usr/local/go/bin" ]; then
+        cat << 'EOF' > /etc/profile.d/golang.sh
 export GOROOT=/usr/local/go
 export GOPATH=$HOME/go
 export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 EOF
-    chmod +x /etc/profile.d/golang.sh
-    export GOROOT=/usr/local/go
-    export GOPATH=$HOME/go
-    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
-
-    log_success "Golang (${GO_ARCH}) terpasang di /usr/local/go/bin/go."
+        chmod +x /etc/profile.d/golang.sh 2>/dev/null || true
+        export GOROOT=/usr/local/go
+        export GOPATH=$HOME/go
+        export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+    fi
 }
 
 # --- 6. Clone / Deploy Web Absen dari Git Repo ---
@@ -774,25 +767,17 @@ EOF
     log_success "Service WhatsApp Gateway (whatsapp.service) aktif di port ${WA_PORT}."
 }
 
-# --- 8. Clone, Build & Setup WhatsApp Bot Go (bot-go) ---
+# --- 8. Download & Setup WhatsApp Bot Go (Compiled Binary) ---
 deploy_bot_wa_go() {
-    log_step "[8/11] Mengunduh, Membangun & Memasang WhatsApp Bot Go (${BOT_GO_REPO})..."
+    log_step "[8/11] Mengunduh & Memasang WhatsApp Bot Go (Compiled Binary)..."
 
-    git config --global --add safe.directory "${BOT_GO_DIR}" 2>/dev/null || true
-
-    if [ -d "${BOT_GO_DIR}/.git" ]; then
-        run_task "Menarik commit terbaru WhatsApp Bot Go via Git (git pull)" "cd '${BOT_GO_DIR}' && (git pull origin main || git pull origin master)"
-    else
-        mkdir -p "${BOT_GO_DIR}"
-        rm -rf "${BOT_GO_DIR:?}"/* "${BOT_GO_DIR:?}"/.[!.]* 2>/dev/null || true
-        run_task "Mengunduh source code WhatsApp Bot Go dari GitHub (Shallow --depth 1)" "git clone --depth 1 --single-branch '${BOT_GO_REPO}' '${BOT_GO_DIR}'"
-    fi
-
+    mkdir -p "${BOT_GO_DIR}"
     cd "${BOT_GO_DIR}"
 
-    # Buat file .env untuk bot-go (Lengkap & Serasi dengan DB & WA)
-    log_info "Menyiapkan file .env untuk WhatsApp Bot Go..."
-    cat << EOF > "${BOT_GO_DIR}/.env"
+    # Buat file .env untuk bot-go jika belum ada (Lengkap & Serasi dengan DB & WA)
+    if [ ! -f "${BOT_GO_DIR}/.env" ]; then
+        log_info "Menyiapkan file .env untuk WhatsApp Bot Go..."
+        cat << EOF > "${BOT_GO_DIR}/.env"
 # ==============================================================================
 #  ENV KONFIGURASI WHATSAPP BOT GO (JAGAT TECH)
 # ==============================================================================
@@ -824,13 +809,38 @@ APP_URL=${APP_URL}
 WA_DEVICE_ID=1
 SUPERADMIN_WA_ID=
 EOF
+    fi
 
-    # Kompilasi binary Go
-    export GOROOT=/usr/local/go
-    export GOPATH=$HOME/go
-    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+    # Tentukan arsitektur binary
+    local bot_wa_arch_suffix="linux-amd64"
+    case "$ARCH_NAME" in
+        amd64)
+            bot_wa_arch_suffix="linux-amd64"
+            ;;
+        arm64)
+            bot_wa_arch_suffix="linux-arm64"
+            ;;
+        386)
+            bot_wa_arch_suffix="linux-x86_32"
+            ;;
+        *)
+            bot_wa_arch_suffix="linux-amd64"
+            ;;
+    esac
 
-    run_task "Mengunduh Go module & mengompilasi binary bot_wa (Go Build)" "cd '${BOT_GO_DIR}' && (/usr/local/go/bin/go mod tidy || true) && /usr/local/go/bin/go build -o '${BOT_GO_DIR}/bot_wa' main.go"
+    local bot_wa_zip_name="bot-${bot_wa_arch_suffix}.zip"
+    local bot_wa_url="https://github.com/kangdaqiq/bot-go/releases/latest/download/${bot_wa_zip_name}"
+    local tmp_zip="/tmp/${bot_wa_zip_name}"
+    local tmp_extract="/tmp/bot_wa_extract"
+    rm -rf "$tmp_extract" "$tmp_zip"
+    mkdir -p "$tmp_extract"
+
+    run_task "Mengunduh & memasang binary compiled WhatsApp Bot Go (${bot_wa_arch_suffix})" "curl -sSL -f '$bot_wa_url' -o '$tmp_zip' && unzip -q -o '$tmp_zip' -d '$tmp_extract' && found_bin=\$(find '$tmp_extract' -type f -name 'bot_wa' -o -name 'bot_wa.exe' | head -n1); [ -z "\$found_bin" ] && found_bin=\$(find '$tmp_extract' -type f ! -name '*.md' ! -name '*.example' ! -name '*.zip' ! -name '*.bat' | head -n1); cp -f "\$found_bin" '${BOT_GO_DIR}/bot_wa' && chmod +x '${BOT_GO_DIR}/bot_wa' && rm -rf '$tmp_extract' '$tmp_zip'"
+
+    # Fallback jika unduhan rilis gagal dan Go compiler tersedia
+    if [ ! -f "${BOT_GO_DIR}/bot_wa" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+        run_task "Fallback: Meng-clone & compile WhatsApp Bot Go via Go" "git clone --depth 1 '${BOT_GO_REPO}' '${BOT_GO_DIR}/src' && cd '${BOT_GO_DIR}/src' && /usr/local/go/bin/go build -o '${BOT_GO_DIR}/bot_wa' main.go && rm -rf '${BOT_GO_DIR}/src'"
+    fi
 
     if [ -f "${BOT_GO_DIR}/bot_wa" ]; then
         chmod +x "${BOT_GO_DIR}/bot_wa"
@@ -863,25 +873,17 @@ EOF
     log_success "Service WhatsApp Bot Go (bot_wa.service) aktif di port ${BOT_GO_PORT}."
 }
 
-# --- 9. Clone, Build & Setup Telegram Bot Go (bot_tele) ---
+# --- 9. Download & Setup Telegram Bot Go (Compiled Binary) ---
 deploy_bot_tele() {
-    log_step "[9/11] Mengunduh, Membangun & Memasang Telegram Bot Go (${BOT_TELE_REPO})..."
+    log_step "[9/11] Mengunduh & Memasang Telegram Bot Go (Compiled Binary)..."
 
-    git config --global --add safe.directory "${BOT_TELE_DIR}" 2>/dev/null || true
-
-    if [ -d "${BOT_TELE_DIR}/.git" ]; then
-        run_task "Menarik commit terbaru Telegram Bot Go via Git (git pull)" "cd '${BOT_TELE_DIR}' && (git pull origin main || git pull origin master)"
-    else
-        mkdir -p "${BOT_TELE_DIR}"
-        rm -rf "${BOT_TELE_DIR:?}"/* "${BOT_TELE_DIR:?}"/.[!.]* 2>/dev/null || true
-        run_task "Mengunduh source code Telegram Bot Go dari GitHub (Shallow --depth 1)" "git clone --depth 1 --single-branch '${BOT_TELE_REPO}' '${BOT_TELE_DIR}'"
-    fi
-
+    mkdir -p "${BOT_TELE_DIR}"
     cd "${BOT_TELE_DIR}"
 
-    # Buat file .env untuk bot_tele (Serasi dengan MariaDB & Web App)
-    log_info "Menyiapkan file .env untuk Telegram Bot..."
-    cat << EOF > "${BOT_TELE_DIR}/.env"
+    # Buat file .env untuk bot_tele jika belum ada (Serasi dengan MariaDB & Web App)
+    if [ ! -f "${BOT_TELE_DIR}/.env" ]; then
+        log_info "Menyiapkan file .env untuk Telegram Bot..."
+        cat << EOF > "${BOT_TELE_DIR}/.env"
 # ==============================================================================
 #  ENV KONFIGURASI TELEGRAM BOT GO (JAGAT TECH)
 # ==============================================================================
@@ -902,13 +904,38 @@ APP_URL=${APP_URL}
 # Telegram Bot Token (Dapatkan dari @BotFather di Telegram)
 TELEGRAM_BOT_TOKEN=
 EOF
+    fi
 
-    # Kompilasi binary Go
-    export GOROOT=/usr/local/go
-    export GOPATH=$HOME/go
-    export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+    # Tentukan arsitektur binary
+    local bot_tele_arch_suffix="linux-amd64"
+    case "$ARCH_NAME" in
+        amd64)
+            bot_tele_arch_suffix="linux-amd64"
+            ;;
+        arm64)
+            bot_tele_arch_suffix="linux-arm64"
+            ;;
+        386)
+            bot_tele_arch_suffix="linux-x86_32"
+            ;;
+        *)
+            bot_tele_arch_suffix="linux-amd64"
+            ;;
+    esac
 
-    run_task "Mengunduh Go module & mengompilasi binary bot_tele (Go Build)" "cd '${BOT_TELE_DIR}' && (/usr/local/go/bin/go mod tidy || true) && /usr/local/go/bin/go build -o '${BOT_TELE_DIR}/bot_tele' ."
+    local bot_tele_zip_name="bot_tele-${bot_tele_arch_suffix}.zip"
+    local bot_tele_url="https://github.com/kangdaqiq/bot_tele/releases/latest/download/${bot_tele_zip_name}"
+    local tmp_zip="/tmp/${bot_tele_zip_name}"
+    local tmp_extract="/tmp/bot_tele_extract"
+    rm -rf "$tmp_extract" "$tmp_zip"
+    mkdir -p "$tmp_extract"
+
+    run_task "Mengunduh & memasang binary compiled Telegram Bot Go (${bot_tele_arch_suffix})" "curl -sSL -f '$bot_tele_url' -o '$tmp_zip' && unzip -q -o '$tmp_zip' -d '$tmp_extract' && found_bin=\$(find '$tmp_extract' -type f -name 'bot_tele' -o -name 'bot_tele.exe' | head -n1); [ -z "\$found_bin" ] && found_bin=\$(find '$tmp_extract' -type f ! -name '*.md' ! -name '*.example' ! -name '*.zip' ! -name '*.bat' | head -n1); cp -f "\$found_bin" '${BOT_TELE_DIR}/bot_tele' && chmod +x '${BOT_TELE_DIR}/bot_tele' && rm -rf '$tmp_extract' '$tmp_zip'"
+
+    # Fallback jika unduhan rilis gagal dan Go compiler tersedia
+    if [ ! -f "${BOT_TELE_DIR}/bot_tele" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+        run_task "Fallback: Meng-clone & compile Telegram Bot Go via Go" "git clone --depth 1 '${BOT_TELE_REPO}' '${BOT_TELE_DIR}/src' && cd '${BOT_TELE_DIR}/src' && /usr/local/go/bin/go build -o '${BOT_TELE_DIR}/bot_tele' . && rm -rf '${BOT_TELE_DIR}/src'"
+    fi
 
     if [ -f "${BOT_TELE_DIR}/bot_tele" ]; then
         chmod +x "${BOT_TELE_DIR}/bot_tele"
@@ -1116,33 +1143,92 @@ case "$1" in
             supervisorctl restart absen-queue:* 2>/dev/null || true
         fi
 
-        # 2. Update Bot WhatsApp Go
+        raw_arch=$(uname -m)
+        arch_suffix="linux-amd64"
+        case "$raw_arch" in
+            x86_64)
+                arch_suffix="linux-amd64"
+                ;;
+            aarch64|arm64)
+                arch_suffix="linux-arm64"
+                ;;
+            i386|i686)
+                arch_suffix="linux-x86_32"
+                ;;
+            *)
+                arch_suffix="linux-amd64"
+                ;;
+        esac
+
+        # 2. Update Bot WhatsApp Go (Compiled Binary)
         if [ -d "$BOT_WA_DIR" ]; then
-            echo -e "${YELLOW}▶ [2/3] Menarik commit terbaru Bot WhatsApp Go (git pull & build)...${NC}"
-            cd "$BOT_WA_DIR" || exit 1
-            git config --global --add safe.directory "$BOT_WA_DIR" 2>/dev/null || true
-            git pull origin main || git pull origin master
-            export GOROOT=/usr/local/go
-            export PATH=$PATH:/usr/local/go/bin
-            /usr/local/go/bin/go mod tidy 2>/dev/null || true
-            /usr/local/go/bin/go build -o bot_wa main.go 2>/dev/null || true
-            systemctl restart bot_wa.service 2>/dev/null || true
+            echo -e "${YELLOW}▶ [2/3] Mengunduh binary compiled terbaru Bot WhatsApp Go (${arch_suffix})...${NC}"
+            bot_wa_url="https://github.com/kangdaqiq/bot-go/releases/latest/download/bot-${arch_suffix}.zip"
+            tmp_zip="/tmp/bot_wa_${arch_suffix}.zip"
+            tmp_extract="/tmp/bot_wa_extract"
+            rm -rf "$tmp_extract" "$tmp_zip"
+            mkdir -p "$tmp_extract"
+            if curl -sSL -f "$bot_wa_url" -o "$tmp_zip" && unzip -q -o "$tmp_zip" -d "$tmp_extract"; then
+                found_bin=$(find "$tmp_extract" -type f -name "bot_wa" -o -name "bot_wa.exe" | head -n1)
+                [ -z "$found_bin" ] && found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.example" ! -name "*.zip" ! -name "*.bat" | head -n1)
+                if [ -n "$found_bin" ]; then
+                    systemctl stop bot_wa.service 2>/dev/null || true
+                    cp -f "$found_bin" "$BOT_WA_DIR/bot_wa"
+                    chmod +x "$BOT_WA_DIR/bot_wa"
+                    systemctl restart bot_wa.service 2>/dev/null || true
+                    echo -e "${GREEN}  ✔ Binary bot_wa berhasil diperbarui ke versi release terbaru!${NC}"
+                fi
+                rm -rf "$tmp_extract" "$tmp_zip"
+            elif [ -d "$BOT_WA_DIR/.git" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+                echo -e "${YELLOW}  Menggunakan fallback: git pull & go build...${NC}"
+                cd "$BOT_WA_DIR" || exit 1
+                git config --global --add safe.directory "$BOT_WA_DIR" 2>/dev/null || true
+                git pull origin main || git pull origin master
+                export GOROOT=/usr/local/go
+                export PATH=$PATH:/usr/local/go/bin
+                /usr/local/go/bin/go mod tidy 2>/dev/null || true
+                /usr/local/go/bin/go build -o bot_wa main.go 2>/dev/null || true
+                systemctl restart bot_wa.service 2>/dev/null || true
+            else
+                echo -e "${RED}  ✗ Gagal mengunduh binary bot_wa dari GitHub Releases.${NC}"
+            fi
         fi
 
-        # 3. Update Bot Telegram Go
+        # 3. Update Bot Telegram Go (Compiled Binary)
         if [ -d "$BOT_TELE_DIR" ]; then
-            echo -e "${YELLOW}▶ [3/3] Menarik commit terbaru Bot Telegram Go (git pull & build)...${NC}"
-            cd "$BOT_TELE_DIR" || exit 1
-            git config --global --add safe.directory "$BOT_TELE_DIR" 2>/dev/null || true
-            git pull origin main || git pull origin master
-            export GOROOT=/usr/local/go
-            export PATH=$PATH:/usr/local/go/bin
-            /usr/local/go/bin/go mod tidy 2>/dev/null || true
-            /usr/local/go/bin/go build -o bot_tele . 2>/dev/null || true
-            systemctl restart bot_tele.service 2>/dev/null || true
+            echo -e "${YELLOW}▶ [3/3] Mengunduh binary compiled terbaru Bot Telegram Go (${arch_suffix})...${NC}"
+            bot_tele_url="https://github.com/kangdaqiq/bot_tele/releases/latest/download/bot_tele-${arch_suffix}.zip"
+            tmp_zip="/tmp/bot_tele_${arch_suffix}.zip"
+            tmp_extract="/tmp/bot_tele_extract"
+            rm -rf "$tmp_extract" "$tmp_zip"
+            mkdir -p "$tmp_extract"
+            if curl -sSL -f "$bot_tele_url" -o "$tmp_zip" && unzip -q -o "$tmp_zip" -d "$tmp_extract"; then
+                found_bin=$(find "$tmp_extract" -type f -name "bot_tele" -o -name "bot_tele.exe" | head -n1)
+                [ -z "$found_bin" ] && found_bin=$(find "$tmp_extract" -type f ! -name "*.md" ! -name "*.example" ! -name "*.zip" ! -name "*.bat" | head -n1)
+                if [ -n "$found_bin" ]; then
+                    systemctl stop bot_tele.service 2>/dev/null || true
+                    cp -f "$found_bin" "$BOT_TELE_DIR/bot_tele"
+                    chmod +x "$BOT_TELE_DIR/bot_tele"
+                    systemctl restart bot_tele.service 2>/dev/null || true
+                    echo -e "${GREEN}  ✔ Binary bot_tele berhasil diperbarui ke versi release terbaru!${NC}"
+                fi
+                rm -rf "$tmp_extract" "$tmp_zip"
+            elif [ -d "$BOT_TELE_DIR/.git" ] && command -v /usr/local/go/bin/go &>/dev/null; then
+                echo -e "${YELLOW}  Menggunakan fallback: git pull & go build...${NC}"
+                cd "$BOT_TELE_DIR" || exit 1
+                git config --global --add safe.directory "$BOT_TELE_DIR" 2>/dev/null || true
+                git pull origin main || git pull origin master
+                export GOROOT=/usr/local/go
+                export PATH=$PATH:/usr/local/go/bin
+                /usr/local/go/bin/go mod tidy 2>/dev/null || true
+                /usr/local/go/bin/go build -o bot_tele . 2>/dev/null || true
+                systemctl restart bot_tele.service 2>/dev/null || true
+            else
+                echo -e "${RED}  ✗ Gagal mengunduh binary bot_tele dari GitHub Releases.${NC}"
+            fi
         fi
 
-        echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web, Bot WA, dan Bot Telegram sudah versi terbaru dari Git.${NC}\n"
+        echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web dan Bot (WA & Telegram) sudah menggunakan versi terbaru.${NC}\n"
         ;;
     status)
         echo -e "${CYAN}=== Status Layanan Sistem Absensi JAGAT TECH ===${NC}"
@@ -1227,7 +1313,7 @@ case "$1" in
         echo "Penggunaan: absen [perintah]"
         echo ""
         echo "Perintah yang tersedia:"
-        echo -e "  ${GREEN}absen update${NC}         - Update web, bot wa & bot tele via Git (git pull + migrate + go build)"
+        echo -e "  ${GREEN}absen update${NC}         - Update web via Git & update compiled binary bot wa & bot tele"
         echo -e "  ${GREEN}absen status${NC}         - Cek status Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue"
         echo -e "  ${GREEN}absen restart${NC}        - Restart seluruh service server, WA, dan Bot"
         echo -e "  ${GREEN}absen swap-delete${NC}    - Hapus Swap File 2GB untuk melegakan penyimpanan internal eMMC"
@@ -1312,7 +1398,7 @@ EOF
     echo -e "${C_BOLD}🔄 CARA UPDATE DI KEMUDIAN HARI (SANGAT MUDAH):${C_RESET}"
     echo -e "   Cukup jalankan satu perintah ini kapan saja di terminal:"
     echo -e "   ${C_BOLD}${C_GREEN}absen update${C_RESET}"
-    echo -e "   ${C_DIM}(Otomatis git pull web, bot wa & bot tele, composer, migrate, go build & optimize!)${C_RESET}"
+    echo -e "   ${C_DIM}(Otomatis update web via Git, download binary compiled terbaru bot wa & bot tele, migrate & optimize!)${C_RESET}"
     echo ""
     echo -e "${C_BOLD}💾 PENGELOLAAN MEMORI & STORAGE EMMC:${C_RESET}"
     echo -e "   • Hapus Swap 2GB    : ${C_GREEN}absen swap-delete${C_RESET} ${C_DIM}(Melegakan kembali 2GB ruang eMMC)${C_RESET}"

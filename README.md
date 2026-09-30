@@ -34,7 +34,7 @@ Auto Installer resmi dari **JAGAT TECH** untuk memasang seluruh kebutuhan server
 4. **WhatsApp Bot Go (Daemon Absensi):**
    - Lokasi: `/var/www/bot-go` (dan symlink `/var/www/bot-wa`)
    - Repositori: `https://github.com/kangdaqiq/bot-go.git`
-   - Otomatis mengunduh modul Go dan mengompilasi binary `bot_wa` menggunakan Golang yang terpasang.
+   - Mengunduh binary `bot_wa` yang sudah di-compile langsung dari GitHub Release (x86 & ARM64), tanpa membebani CPU/RAM perangkat.
    - Dijalankan sebagai Systemd Service (`bot_wa.service`) di port `5000` dan menerima event webhook dari WhatsApp Gateway.
 5. **Telegram Bot Go (Multi-Tenant Bot):**
    - Lokasi: `/var/www/bot-tele`
@@ -162,8 +162,8 @@ Perintah di atas secara otomatis akan:
 2. Memperbarui paket PHP (`composer install`).
 3. Menjalankan migrasi database baru (`php artisan migrate`).
 4. Membersihkan & mengoptimalkan cache framework (`php artisan optimize`).
-5. Menarik commit terbaru WhatsApp Bot Go via `git pull` & mengompilasi ulang binary (`go build`).
-6. Menarik commit terbaru Telegram Bot Go via `git pull` & mengompilasi ulang binary (`go build`).
+5. Mengunduh dan memperbarui binary compiled terbaru WhatsApp Bot Go dari GitHub Release.
+6. Mengunduh dan memperbarui binary compiled terbaru Telegram Bot Go dari GitHub Release.
 7. Me-restart queue worker & seluruh bot service.
 
 ---
