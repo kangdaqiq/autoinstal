@@ -317,6 +317,7 @@ if ($currentIni -and (Test-Path $currentIni)) {
     foreach ($ext in $requiredExtensions) {
         # Uncomment extension=xxx atau extension=php_xxx.dll (dengan atau tanpa spasi setelah tanda titik koma)
         $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^;\s*extension\s*=\s*(php_)?$ext(\.dll)?", "extension=$ext")
+        $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^extension\s*=\s*php_$ext\.dll", "extension=$ext")
     }
 
     # Atur memory_limit, upload_max_filesize, post_max_size
@@ -328,13 +329,22 @@ if ($currentIni -and (Test-Path $currentIni)) {
     $activePhpDir = Split-Path -Path $PhpExe
     $phpExtDir = (Join-Path $activePhpDir "ext").Replace('\', '/')
     
-    # Hapus semua baris konfigurasi extension_dir yang ada (komentar maupun aktif)
+    # Hapus semua baris konfigurasi extension_dir yang ada (komentar maupun aktif) dan deduplikasi ekstensi
     $iniLines = $iniContent -split "`r?`n"
     $cleanLines = @()
+    $seenExt = @{}
     foreach ($line in $iniLines) {
-        if ($line -notmatch '^\s*;?\s*extension_dir\s*=') {
-            $cleanLines += $line
+        if ($line -match '^\s*;?\s*extension_dir\s*=') {
+            continue
         }
+        if ($line -match '^\s*extension\s*=\s*([a-zA-Z0-9_]+)\s*$') {
+            $eName = $matches[1].ToLower()
+            if ($seenExt.ContainsKey($eName)) {
+                continue
+            }
+            $seenExt[$eName] = $true
+        }
+        $cleanLines += $line
     }
     # Sisipkan extension_dir absolut di bagian paling atas
     $iniContent = "extension_dir = `"$phpExtDir`"`r`n" + ($cleanLines -join "`r`n")
@@ -452,20 +462,37 @@ if (-not (Test-PortFast $DbHost ([int]$DbPort))) {
 if (Test-PortFast $DbHost ([int]$DbPort)) {
     Log-Success "Database Server aktif di $DbHost`:$DbPort."
     
-    # Deteksi client mysql.exe di PATH atau di direktori umum (XAMPP / MariaDB)
+    # Deteksi client mysql.exe di PATH atau di direktori umum (XAMPP / MariaDB / MySQL)
     $mysqlCli = Get-Command mysql.exe -ErrorAction SilentlyContinue
     if (-not $mysqlCli) {
         $commonCliPaths = @(
             "C:\xampp\mysql\bin\mysql.exe",
             "C:\Program Files\MariaDB 11.4\bin\mysql.exe",
+            "C:\Program Files\MariaDB 11.5\bin\mysql.exe",
             "C:\Program Files\MariaDB 10.11\bin\mysql.exe",
-            "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+            "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe",
+            "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe"
         )
         foreach ($cp in $commonCliPaths) {
             if (Test-Path $cp) {
                 $mysqlCli = [PSCustomObject]@{ Source = $cp }
                 break
             }
+        }
+    }
+    if (-not $mysqlCli) {
+        $foundMysqlItem = Get-ChildItem -Path "C:\Program Files\MariaDB*", "C:\Program Files\MySQL*", "C:\Program Files (x86)\MariaDB*", "C:\Program Files (x86)\MySQL*" -Filter "mysql.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($foundMysqlItem) {
+            $mysqlCli = [PSCustomObject]@{ Source = $foundMysqlItem.FullName }
+        }
+    }
+
+    $mysqlBinDir = ""
+    if ($mysqlCli) {
+        $mysqlBinDir = Split-Path -Path $mysqlCli.Source
+        if ($env:PATH -notlike "*$mysqlBinDir*") {
+            $env:PATH = "$mysqlBinDir;$env:PATH"
+            Log-Info "Client MySQL/MariaDB ditambahkan ke PATH: $mysqlBinDir"
         }
     }
 
@@ -634,6 +661,17 @@ try {
 
     if ($LASTEXITCODE -ne 0) {
         throw "Composer install gagal (exit code: $LASTEXITCODE). Pastikan ekstensi PHP dan koneksi internet siap."
+    }
+
+    # Pastikan client mysql.exe tersedia di PATH untuk import schema database Laravel (mysql-schema.sql)
+    $mysqlInPath = Get-Command mysql.exe -ErrorAction SilentlyContinue
+    if (-not $mysqlInPath) {
+        $candidateMysql = Get-ChildItem -Path "C:\Program Files\MariaDB*", "C:\Program Files\MySQL*", "C:\Program Files (x86)\MariaDB*", "C:\Program Files (x86)\MySQL*", "C:\xampp\mysql\bin" -Filter "mysql.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($candidateMysql) {
+            $mDir = Split-Path -Path $candidateMysql.FullName
+            $env:PATH = "$mDir;$env:PATH"
+            Log-Info "Menambahkan '$mDir' ke PATH untuk import skema Laravel."
+        }
     }
 
     Log-Info "Menghasilkan APP_KEY dan migrasi database..."
@@ -835,6 +873,7 @@ if (Test-Path $srcAbsenCmd) { Copy-Item $srcAbsenCmd (Join-Path $ScriptsDir "abs
 $currentMachinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
 $pathsToAdd = @($ScriptsDir)
 if (-not $useSystemPhp) { $pathsToAdd += $PhpDir }
+if ($mysqlBinDir) { $pathsToAdd += $mysqlBinDir }
 
 foreach ($p in $pathsToAdd) {
     if ($currentMachinePath -notlike "*$p*") {
