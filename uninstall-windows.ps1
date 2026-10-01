@@ -1,11 +1,10 @@
 ﻿<#
 ==============================================================================
-   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
-   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
-   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
-   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
-   ███║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
-   ╚══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+      _   _    ____    _  _____   _____ _____ ____ _   _ 
+     | | / \  / ___|  / \|_   _| |_   _| ____/ ___| | | |
+  _  | |/ _ \| |  _  / _ \ | |     | | |  _|| |   | |_| |
+ | |_| / ___ \ |_| |/ ___ \| |     | | | |__| |___|  _  |
+  \___/_/   \_\____/_/   \_\_|     |_| |_____\____|_| |_|
 ==============================================================================
    UNINSTALLER JAGAT TECH FOR WINDOWS (NATIVE POWERSHELL)
    Membersihkan seluruh Stack Layanan, Nginx, PHP FastCGI, Bot, & Shortcut
@@ -40,7 +39,10 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 }
 
 $Host.UI.RawUI.WindowTitle = "JAGAT TECH - Uninstaller Windows Server & Absensi"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+} catch {}
 
 # -----------------------------------------------------------------------------
 # 2. Helper Output & UI
@@ -49,12 +51,11 @@ function Write-Header {
     Clear-Host
     Write-Host @"
 ==============================================================================
-   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
-   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
-   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
-   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
-   ███║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
-   ╚══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+      _   _    ____    _  _____   _____ _____ ____ _   _ 
+     | | / \  / ___|  / \|_   _| |_   _| ____/ ___| | | |
+  _  | |/ _ \| |  _  / _ \ | |     | | |  _|| |   | |_| |
+ | |_| / ___ \ |_| |/ ___ \| |     | | | |__| |___|  _  |
+  \___/_/   \_\____/_/   \_\_|     |_| |_____\____|_| |_|
 ==============================================================================
    UNINSTALLER SERVER, WEB ABSENSI & BOT SERVICES (WINDOWS NATIVE)
    Provider : JAGAT TECH
@@ -63,23 +64,23 @@ function Write-Header {
 }
 
 function Log-Step([string]$msg) {
-    Write-Host "`n▶ $msg" -ForegroundColor Cyan
+    Write-Host "`n>>> $msg" -ForegroundColor Cyan
 }
 
 function Log-Info([string]$msg) {
-    Write-Host " ℹ $msg" -ForegroundColor White
+    Write-Host " [i] $msg" -ForegroundColor White
 }
 
 function Log-Success([string]$msg) {
-    Write-Host " ✔ $msg" -ForegroundColor Green
+    Write-Host " [+] $msg" -ForegroundColor Green
 }
 
 function Log-Warn([string]$msg) {
-    Write-Host " ⚠ $msg" -ForegroundColor Yellow
+    Write-Host " [!] $msg" -ForegroundColor Yellow
 }
 
 function Log-Error([string]$msg) {
-    Write-Host " ✖ $msg" -ForegroundColor Red
+    Write-Host " [x] $msg" -ForegroundColor Red
 }
 
 Write-Header
@@ -294,7 +295,7 @@ if (Test-Path $InstallDir) {
 Write-Host @"
 
 ==============================================================================
- 🎉 UNINSTALASI JAGAT TECH SELESAI DENGAN SUKSES!
+  [+] UNINSTALASI JAGAT TECH SELESAI DENGAN SUKSES!
 ==============================================================================
  Seluruh layanan server, Nginx, PHP FastCGI, Bot, shortcut, dan file
  instalasi JAGAT TECH telah berhasil dibersihkan dari komputer Anda.

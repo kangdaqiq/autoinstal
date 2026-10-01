@@ -1,14 +1,13 @@
-<#
+﻿<#
 ==============================================================================
-   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
-   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
-   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
-   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
-  ███║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
-  ╚══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+      _   _    ____    _  _____   _____ _____ ____ _   _ 
+     | | / \  / ___|  / \|_   _| |_   _| ____/ ___| | | |
+  _  | |/ _ \| |  _  / _ \ | |     | | |  _|| |   | |_| |
+ | |_| / ___ \ |_| |/ ___ \| |     | | | |__| |___|  _  |
+  \___/_/   \_\____/_/   \_\_|     |_| |_____\____|_| |_|
 ==============================================================================
- AUTO INSTALLER JAGAT TECH FOR WINDOWS (NATIVE POWERSHELL)
- Stack: Nginx • PHP 8.3/8.2 • MariaDB/MySQL • Composer • GOWA • Bot WA • Bot Tele
+  AUTO INSTALLER JAGAT TECH FOR WINDOWS (NATIVE POWERSHELL)
+  Stack: Nginx | PHP 8.3/8.2 | MariaDB/MySQL | Composer | GOWA | Bot WA | Bot Tele
 ==============================================================================
 #>
 
@@ -41,7 +40,10 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 }
 
 $Host.UI.RawUI.WindowTitle = "JAGAT TECH - Auto Installer Windows Server & Absensi"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+} catch {}
 
 # -----------------------------------------------------------------------------
 # 2. Helper Output & UI
@@ -50,12 +52,11 @@ function Write-Header {
     Clear-Host
     Write-Host @"
 ==============================================================================
-   ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
-   ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
-   ██║███████║██║  ███╗███████║   ██║          ██║   █████╗  ██║     ███████║
-   ██║██╔══██║██║   ██║██╔══██║   ██║          ██║   ██╔══╝  ██║     ██╔══██║
-  ███║██║  ██║╚██████╔╝██║  ██║   ██║          ██║   ███████╗╚██████╗██║  ██║
-  ╚══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝          ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝
+      _   _    ____    _  _____   _____ _____ ____ _   _ 
+     | | / \  / ___|  / \|_   _| |_   _| ____/ ___| | | |
+  _  | |/ _ \| |  _  / _ \ | |     | | |  _|| |   | |_| |
+ | |_| / ___ \ |_| |/ ___ \| |     | | | |__| |___|  _  |
+  \___/_/   \_\____/_/   \_\_|     |_| |_____\____|_| |_|
 ==============================================================================
   AUTO INSTALLER SERVER, WEB ABSENSI & WHATSAPP GATEWAY (WINDOWS NATIVE)
   Provider : JAGAT TECH
@@ -64,23 +65,23 @@ function Write-Header {
 }
 
 function Log-Step([string]$msg) {
-    Write-Host "`n▶ $msg" -ForegroundColor Blue
+    Write-Host "`n>>> $msg" -ForegroundColor Blue
 }
 
 function Log-Info([string]$msg) {
-    Write-Host " ℹ $msg" -ForegroundColor White
+    Write-Host " [i] $msg" -ForegroundColor White
 }
 
 function Log-Success([string]$msg) {
-    Write-Host " ✔ $msg" -ForegroundColor Green
+    Write-Host " [+] $msg" -ForegroundColor Green
 }
 
 function Log-Warn([string]$msg) {
-    Write-Host " ⚠ $msg" -ForegroundColor Yellow
+    Write-Host " [!] $msg" -ForegroundColor Yellow
 }
 
 function Log-Error([string]$msg) {
-    Write-Host " ✖ $msg" -ForegroundColor Red
+    Write-Host " [x] $msg" -ForegroundColor Red
 }
 
 function Test-PortFast([string]$hostname, [int]$port, [int]$timeoutMs = 800) {
@@ -862,20 +863,20 @@ $scCli.Save()
 Write-Host @"
 
 ==============================================================================
- 🎉 INSTALASI SERVER JAGAT TECH WINDOWS SELESAI DENGAN SUKSES!
+  [+] INSTALASI SERVER JAGAT TECH WINDOWS SELESAI DENGAN SUKSES!
 ==============================================================================
 
-  📁 Direktori Server   : $InstallDir
-  🌐 Web Absensi        : http://localhost (atau http://$Domain)
-  💬 WhatsApp Gateway   : http://localhost:$WaPort
-                          Username : $WaUser
-                          Password : $WaPass
-  🤖 WhatsApp Bot Go    : Webhook aktif di port 5000
-  📨 Telegram Bot Go    : Aktif (Silakan set token bot di $BotTeleDir\.env)
-  🗄️ Database MariaDB   : $DbName (User: $DbUser)
+  - Direktori Server   : $InstallDir
+  - Web Absensi        : http://localhost (atau http://$Domain)
+  - WhatsApp Gateway   : http://localhost:$WaPort
+                         Username : $WaUser
+                         Password : $WaPass
+  - WhatsApp Bot Go    : Webhook aktif di port 5000
+  - Telegram Bot Go    : Aktif (Silakan set token bot di $BotTeleDir\.env)
+  - Database MariaDB   : $DbName (User: $DbUser)
 
 ==============================================================================
- 💡 CARA MENGELOLA SERVER VIA TERMINAL (CMD / POWERSHELL):
+  CARA MENGELOLA SERVER VIA TERMINAL (CMD / POWERSHELL):
 ==============================================================================
   absen status     -> Cek kondisi aktif/tidaknya seluruh service
   absen start      -> Menyalakan seluruh service
