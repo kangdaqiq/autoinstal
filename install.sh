@@ -670,7 +670,7 @@ deploy_web_absen() {
 
     # Artisan Commands
     if [ -f artisan ]; then
-        run_task "Menghasilkan APP_KEY, migrasi database & rehash lisensi" "php artisan key:generate --force && php artisan migrate --force && (php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true)"
+        run_task "Menghasilkan APP_KEY, migrasi database, seeding awal & rehash lisensi" "php artisan key:generate --force && php artisan migrate --force && (php artisan db:seed --force || true) && (php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true)"
         run_task "Membuat storage link & mengoptimalkan cache Laravel" "php artisan storage:link --force && php artisan optimize:clear && php artisan optimize"
     fi
 

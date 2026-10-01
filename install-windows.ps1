@@ -708,9 +708,10 @@ try {
         }
     }
 
-    Log-Info "Menghasilkan APP_KEY, migrasi database, dan rehash lisensi..."
+    Log-Info "Menghasilkan APP_KEY, migrasi database, seeding data awal, dan rehash lisensi..."
     & $PhpExe -c "$currentIni" artisan key:generate --force
     & $PhpExe -c "$currentIni" artisan migrate --force
+    & $PhpExe -c "$currentIni" artisan db:seed --force
     & $PhpExe -c "$currentIni" artisan license:rehash --force 2>$null
     if ($LASTEXITCODE -ne 0) {
         & $PhpExe -c "$currentIni" artisan license:rehash 2>$null
