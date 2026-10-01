@@ -340,12 +340,24 @@ if ($currentIni -and (Test-Path $currentIni)) {
     $activePhpDir = Split-Path -Path $PhpExe
     $phpExtDir = (Join-Path $activePhpDir "ext").Replace('\', '/')
     
-    # Hapus semua baris konfigurasi extension_dir yang ada (komentar maupun aktif) dan deduplikasi ekstensi
+    # Unduh & Konfigurasi CA Certificate Bundle (cacert.pem) agar HTTPS / cURL / OpenSSL dapat memverifikasi sertifikat SSL server lisensi
+    $caCertPath = Join-Path $activePhpDir "cacert.pem"
+    if (-not (Test-Path $caCertPath)) {
+        Log-Info "Menyiapkan sertifikat SSL/TLS CA bundle (cacert.pem)..."
+        try {
+            Download-FileWithProgress "https://curl.se/ca/cacert.pem" $caCertPath "CA Certificate Bundle"
+        } catch {
+            Log-Warn "Gagal mengunduh cacert.pem otomatis: $($_.Exception.Message)"
+        }
+    }
+    $caCertNormalized = $caCertPath.Replace('\', '/')
+
+    # Hapus semua baris konfigurasi extension_dir, curl.cainfo, openssl.cafile yang ada dan deduplikasi ekstensi
     $iniLines = $iniContent -split "`r?`n"
     $cleanLines = @()
     $seenExt = @{}
     foreach ($line in $iniLines) {
-        if ($line -match '^\s*;?\s*extension_dir\s*=') {
+        if ($line -match '^\s*;?\s*(extension_dir|curl\.cainfo|openssl\.cafile)\s*=') {
             continue
         }
         if ($line -match '^\s*extension\s*=\s*([a-zA-Z0-9_]+)\s*$') {
@@ -357,8 +369,14 @@ if ($currentIni -and (Test-Path $currentIni)) {
         }
         $cleanLines += $line
     }
-    # Sisipkan extension_dir absolut di bagian paling atas
-    $iniContent = "extension_dir = `"$phpExtDir`"`r`n" + ($cleanLines -join "`r`n")
+    
+    # Sisipkan extension_dir dan CA bundle absolut di bagian paling atas
+    $iniPrefix = "extension_dir = `"$phpExtDir`"`r`n"
+    if (Test-Path $caCertPath) {
+        $iniPrefix += "curl.cainfo = `"$caCertNormalized`"`r`n"
+        $iniPrefix += "openssl.cafile = `"$caCertNormalized`"`r`n"
+    }
+    $iniContent = $iniPrefix + ($cleanLines -join "`r`n")
     
     Set-Content -Path $currentIni -Value $iniContent -Force
 
@@ -657,10 +675,14 @@ if (Test-Path $envFile) {
         "(?m)^GOWA_API_USER=.*"      = "GOWA_API_USER=$WaUser"
         "(?m)^GOWA_API_PASS=.*"      = "GOWA_API_PASS=$WaPass"
         "(?m)^QUEUE_CONNECTION=.*"   = "QUEUE_CONNECTION=database"
+        "(?m)^LICENSE_SERVER_URL=.*" = "LICENSE_SERVER_URL=https://absen.jagattech.my.id"
     }
 
     foreach ($pattern in $replacements.Keys) {
         $envContent = [System.Text.RegularExpressions.Regex]::Replace($envContent, $pattern, $replacements[$pattern])
+    }
+    if ($envContent -notmatch '(?m)^LICENSE_SERVER_URL=') {
+        $envContent += "`r`nLICENSE_SERVER_URL=https://absen.jagattech.my.id`r`n"
     }
     Set-Content -Path $envFile -Value $envContent -Force
 }
