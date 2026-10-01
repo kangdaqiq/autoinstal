@@ -1,4 +1,4 @@
-﻿<#
+<#
 ==============================================================================
       _   _    ____    _  _____   _____ _____ ____ _   _ 
      | | / \  / ___|  / \|_   _| |_   _| ____/ ___| | | |
@@ -302,6 +302,11 @@ if (-not $useSystemPhp) {
 
 if ($currentIni -and (Test-Path $currentIni)) {
     Log-Info "Memverifikasi ekstensi di $currentIni..."
+    
+    # Set PHPRC lingkungan agar seluruh proses PHP selalu memuat php.ini ini
+    $iniDir = Split-Path -Path $currentIni
+    $env:PHPRC = $iniDir
+
     $iniContent = Get-Content -Path $currentIni -Raw
     
     $requiredExtensions = @(
@@ -319,36 +324,51 @@ if ($currentIni -and (Test-Path $currentIni)) {
     $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^upload_max_filesize\s*=.*", "upload_max_filesize = 64M")
     $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^post_max_size\s*=.*", "post_max_size = 64M")
     
-    # Pastikan extension_dir menggunakan path absolut agar modul PHP selalu ditemukan di direktori mana pun dieksekusi
-    if (-not $useSystemPhp) {
-        $phpExtDir = Join-Path $PhpDir "ext"
-        if ($iniContent -match '(?m)^;?\s*extension_dir\s*=') {
-            $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, '(?m)^;?\s*extension_dir\s*=.*', "extension_dir = `"$phpExtDir`"")
-        } else {
-            $iniContent += "`r`nextension_dir = `"$phpExtDir`"`r`n"
+    # Tentukan folder ext PHP secara absolut dengan forward slashes (bebas escape regex)
+    $activePhpDir = Split-Path -Path $PhpExe
+    $phpExtDir = (Join-Path $activePhpDir "ext").Replace('\', '/')
+    
+    # Hapus semua baris konfigurasi extension_dir yang ada (komentar maupun aktif)
+    $iniLines = $iniContent -split "`r?`n"
+    $cleanLines = @()
+    foreach ($line in $iniLines) {
+        if ($line -notmatch '^\s*;?\s*extension_dir\s*=') {
+            $cleanLines += $line
         }
     }
+    # Sisipkan extension_dir absolut di bagian paling atas
+    $iniContent = "extension_dir = `"$phpExtDir`"`r`n" + ($cleanLines -join "`r`n")
     
     Set-Content -Path $currentIni -Value $iniContent -Force
+
+    # Tes verifikasi ekstensi PHP penting
+    $loadedModules = (& $PhpExe -c "$currentIni" -m 2>$null) -join " "
+    if ($loadedModules -match "openssl" -and $loadedModules -match "pdo_mysql") {
+        Log-Success "Ekstensi PHP penting (OpenSSL, PDO MySQL, cURL) aktif sempurna."
+    } else {
+        Log-Warn "Verifikasi modul PHP mendeteksi beberapa ekstensi belum siap."
+    }
 }
 
 # Siapkan Composer
-$systemComposer = Get-Command composer.bat, composer.exe -ErrorAction SilentlyContinue
-$ComposerCmd = ""
-if ($systemComposer) {
-    $ComposerCmd = $systemComposer[0].Source
-    Log-Success "Composer terdeteksi: $ComposerCmd"
-} else {
-    $compDir = Join-Path $BinDir "composer"
-    if (-not (Test-Path $compDir)) { New-Item -ItemType Directory -Path $compDir -Force | Out-Null }
-    $compPhar = Join-Path $compDir "composer.phar"
-    Download-FileWithProgress "https://getcomposer.org/composer.phar" $compPhar "Composer PHAR"
-    $compBat = Join-Path $compDir "composer.bat"
-    Set-Content -Path $compBat -Value "@`"$PhpExe`" `"%~dp0composer.phar`" %*" -Force
-    $ComposerCmd = $compBat
-    $env:PATH = "$compDir;$env:PATH"
-    Log-Success "Composer portable siap digunakan di $compBat"
+$compDir = Join-Path $BinDir "composer"
+if (-not (Test-Path $compDir)) { New-Item -ItemType Directory -Path $compDir -Force | Out-Null }
+$compPhar = Join-Path $compDir "composer.phar"
+
+if (-not (Test-Path $compPhar)) {
+    $sysPhar = "C:\ProgramData\ComposerSetup\bin\composer.phar"
+    if (Test-Path $sysPhar) {
+        Copy-Item $sysPhar $compPhar -Force
+    } else {
+        Download-FileWithProgress "https://getcomposer.org/composer.phar" $compPhar "Composer PHAR"
+    }
 }
+
+$compBat = Join-Path $compDir "composer.bat"
+Set-Content -Path $compBat -Value "@`"$PhpExe`" -c `"$currentIni`" `"$compPhar`" %*" -Force
+$ComposerCmd = $compPhar
+$env:PATH = "$compDir;$env:PATH"
+Log-Success "Composer siap digunakan di $compPhar"
 
 # -----------------------------------------------------------------------------
 # 6. Menyiapkan NSSM (Windows Service Manager)
@@ -610,22 +630,18 @@ if (Test-Path $envFile) {
 Push-Location $AppDir
 try {
     Log-Info "Menjalankan composer install..."
-    if ($ComposerCmd -like "*.phar") {
-        & $PhpExe $ComposerCmd install --no-dev --optimize-autoloader --no-interaction
-    } else {
-        & $ComposerCmd install --no-dev --optimize-autoloader --no-interaction
-    }
+    & $PhpExe -c "$currentIni" "$ComposerCmd" install --no-dev --optimize-autoloader --no-interaction
 
     if ($LASTEXITCODE -ne 0) {
         throw "Composer install gagal (exit code: $LASTEXITCODE). Pastikan ekstensi PHP dan koneksi internet siap."
     }
 
     Log-Info "Menghasilkan APP_KEY dan migrasi database..."
-    & $PhpExe artisan key:generate --force
-    & $PhpExe artisan migrate --force
-    & $PhpExe artisan storage:link --force
-    & $PhpExe artisan optimize:clear
-    & $PhpExe artisan optimize
+    & $PhpExe -c "$currentIni" artisan key:generate --force
+    & $PhpExe -c "$currentIni" artisan migrate --force
+    & $PhpExe -c "$currentIni" artisan storage:link --force
+    & $PhpExe -c "$currentIni" artisan optimize:clear
+    & $PhpExe -c "$currentIni" artisan optimize
     Log-Success "Web Absensi berhasil di-deploy dan teroptimasi."
 } catch {
     Log-Warn "Ada catatan saat migrasi/composer: $($_.Exception.Message)"
