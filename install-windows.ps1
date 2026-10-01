@@ -1,4 +1,4 @@
-<#
+﻿<#
 ==============================================================================
    ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
    ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
@@ -40,7 +40,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Exit
 }
 
-$Host.UI.RawUI.WindowTitle = "JAGAT TECH — Auto Installer Windows Server & Absensi"
+$Host.UI.RawUI.WindowTitle = "JAGAT TECH - Auto Installer Windows Server & Absensi"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # -----------------------------------------------------------------------------
@@ -149,7 +149,6 @@ $ScriptsDir = Join-Path $InstallDir "scripts"
 $AppDir     = Join-Path $WwwDir "web"
 $WaDir      = Join-Path $WwwDir "whatsapp"
 $BotGoDir   = Join-Path $WwwDir "bot-go"
-$BotWaLink  = Join-Path $WwwDir "bot-wa"
 $BotTeleDir = Join-Path $WwwDir "bot-tele"
 
 $PhpDir     = Join-Path $BinDir "php"
@@ -159,6 +158,7 @@ $NssmExe    = Join-Path $NssmDir "nssm.exe"
 
 # Buat struktur direktori
 @($InstallDir, $BinDir, $WwwDir, $DataDir, $LogsDir, $ScriptsDir,
+  $PhpDir, $NginxDir, $NssmDir,
   $WaDir, $BotGoDir, $BotTeleDir,
   (Join-Path $LogsDir "nginx"), (Join-Path $LogsDir "php"),
   (Join-Path $LogsDir "whatsapp"), (Join-Path $LogsDir "bot_wa"),
@@ -197,17 +197,26 @@ $PhpExe = ""
 $PhpCgiExe = ""
 
 if ($systemPhp) {
-    $phpVerStr = & $systemPhp.Source -r "echo PHP_VERSION;" 2>$null
-    if ($phpVerStr) {
-        # Parse version bersih (misal 8.2.12 -> 8.2.12)
-        $cleanVer = ($phpVerStr -split "-")[0]
-        if ([version]$cleanVer -ge [version]"8.2.0") {
-            Log-Success "PHP sistem terdeteksi kompatibel: v$cleanVer ($($systemPhp.Source))"
-            $useSystemPhp = $true
-            $PhpExe = $systemPhp.Source
-            $phpBase = Split-Path -Path $PhpExe
+    $rawPhpOut = (& $systemPhp.Source -v 2>$null) -join " "
+    if ($rawPhpOut -match 'PHP\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)') {
+        $cleanVer = $matches[1]
+        $isCompatible = $false
+        try {
+            $isCompatible = ([version]$cleanVer -ge [version]"8.2.0")
+        } catch {}
+
+        if ($isCompatible) {
+            $phpBase = Split-Path -Path $systemPhp.Source
             $candCgi = Join-Path $phpBase "php-cgi.exe"
-            if (Test-Path $candCgi) { $PhpCgiExe = $candCgi }
+            if (Test-Path $candCgi) {
+                Log-Success "PHP sistem terdeteksi kompatibel: v$cleanVer ($($systemPhp.Source))"
+                $useSystemPhp = $true
+                $PhpExe = $systemPhp.Source
+                $PhpCgiExe = $candCgi
+            } else {
+                Log-Warn "PHP sistem v$cleanVer ditemukan, tetapi 'php-cgi.exe' tidak tersedia (dibutuhkan untuk Nginx FastCGI)."
+                Log-Info "Installer akan memasang PHP 8.3 Portable mandiri di $PhpDir."
+            }
         } else {
             Log-Warn "PHP sistem terdeteksi v$cleanVer (di bawah syarat minimum PHP 8.2+)."
             Log-Info "Untuk menjaga kestabilan, installer akan memasang PHP 8.3 Portable mandiri di $PhpDir."
@@ -259,7 +268,8 @@ if (-not $useSystemPhp) {
 }
 
 # Aktifkan ekstensi yang diperlukan di php.ini
-$currentIni = & $PhpExe -r "echo php_ini_loaded_file();" 2>$null
+$currentIniRaw = & $PhpExe -r "echo php_ini_loaded_file();" 2>$null
+$currentIni = ($currentIniRaw | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1)
 if ($currentIni -and (Test-Path $currentIni)) {
     Log-Info "Memverifikasi ekstensi di $currentIni..."
     $iniContent = Get-Content -Path $currentIni -Raw
@@ -315,12 +325,19 @@ if (-not (Test-Path $NssmExe)) {
     Download-FileWithProgress "https://nssm.cc/release/nssm-2.24.zip" $nssmZip "NSSM 2.24"
     Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
     $foundNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse | Where-Object { $_.DirectoryName -like "*win64*" } | Select-Object -First 1
+    if (-not (Test-Path $NssmDir)) { New-Item -ItemType Directory -Path $NssmDir -Force | Out-Null }
     if ($foundNssm) {
         Copy-Item -Path $foundNssm.FullName -Destination $NssmExe -Force
-        Log-Success "NSSM 64-bit terpasang di $NssmExe"
     } else {
         $anyNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse | Select-Object -First 1
-        Copy-Item -Path $anyNssm.FullName -Destination $NssmExe -Force
+        if ($anyNssm) {
+            Copy-Item -Path $anyNssm.FullName -Destination $NssmExe -Force
+        }
+    }
+    if (Test-Path $NssmExe) {
+        Log-Success "NSSM 64-bit terpasang di $NssmExe"
+    } else {
+        Log-Error "Gagal memasang NSSM di $NssmExe"
     }
     Remove-Item -Path $nssmZip -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
@@ -332,28 +349,87 @@ if (-not (Test-Path $NssmExe)) {
 # 7. Memeriksa & Menyiapkan Database MySQL / MariaDB
 # -----------------------------------------------------------------------------
 Log-Step "[4/9] Memeriksa & Mengonfigurasi Database MariaDB/MySQL..."
+
+# 1. Cek apakah ada service database lokal (misal MySQL XAMPP / MariaDB) yang terpasang namun sedang Stopped
+if (-not (Test-PortFast $DbHost ([int]$DbPort))) {
+    $existingSvc = Get-Service -Name "mysql", "mariadb", "MySQL80" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Stopped" } | Select-Object -First 1
+    if ($existingSvc) {
+        Log-Info "Ditemukan layanan database lokal '$($existingSvc.Name)'. Menyalakan layanan..."
+        Start-Service -Name $existingSvc.Name -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+    }
+}
+
+# 2. Cek apakah ada XAMPP MySQL jika port masih belum aktif
+if (-not (Test-PortFast $DbHost ([int]$DbPort))) {
+    $xamppBat = "C:\xampp\mysql_start.bat"
+    if (Test-Path $xamppBat) {
+        Log-Info "Mencoba mengaktifkan MySQL dari instalasi XAMPP lokal..."
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$xamppBat`"" -WindowStyle Hidden
+        Start-Sleep -Seconds 3
+    }
+}
+
+# 3. Jika database masih belum aktif, unduh dari server direct mirror cepat (archive.mariadb.org)
+if (-not (Test-PortFast $DbHost ([int]$DbPort))) {
+    Log-Warn "Database belum aktif di $DbHost`:$DbPort."
+    Log-Info "Mengunduh MariaDB Server dari server direct mirror cepat (archive.mariadb.org)..."
+    $mariadbMsi = Join-Path $env:TEMP "mariadb-11.4.3-winx64.msi"
+    $mariadbUrl = "https://archive.mariadb.org/mariadb-11.4.3/winx64-packages/mariadb-11.4.3-winx64.msi"
+    try {
+        Download-FileWithProgress $mariadbUrl $mariadbMsi "MariaDB 11.4 LTS (Direct Fast Mirror)"
+        Log-Info "Memasang MariaDB Server di latar belakang..."
+        Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$mariadbMsi`" /qn /norestart ALLUSERS=1 SERVICENAME=MariaDB PORT=3306" -Wait
+        Start-Sleep -Seconds 5
+        Remove-Item -Path $mariadbMsi -Force -ErrorAction SilentlyContinue
+    } catch {
+        Log-Warn "Gagal mengunduh installer MariaDB: $($_.Exception.Message)"
+        $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+        if ($winget) {
+            Log-Info "Mencoba pemasangan via winget sebagai alternatif..."
+            & $winget.Source install --id MariaDB.Server -e --source winget --accept-source-agreements --accept-package-agreements --silent
+            Start-Sleep -Seconds 5
+        }
+    }
+}
+
+# 4. Inisialisasi Database dan Pengguna jika port sudah terbuka
 if (Test-PortFast $DbHost ([int]$DbPort)) {
     Log-Success "Database Server aktif di $DbHost`:$DbPort."
     
-    # Coba buat database dan user menggunakan client mysql jika ada
+    # Deteksi client mysql.exe di PATH atau di direktori umum (XAMPP / MariaDB)
     $mysqlCli = Get-Command mysql.exe -ErrorAction SilentlyContinue
+    if (-not $mysqlCli) {
+        $commonCliPaths = @(
+            "C:\xampp\mysql\bin\mysql.exe",
+            "C:\Program Files\MariaDB 11.4\bin\mysql.exe",
+            "C:\Program Files\MariaDB 10.11\bin\mysql.exe",
+            "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+        )
+        foreach ($cp in $commonCliPaths) {
+            if (Test-Path $cp) {
+                $mysqlCli = [PSCustomObject]@{ Source = $cp }
+                break
+            }
+        }
+    }
+
     if ($mysqlCli) {
         Log-Info "Membuat database $DbName dan user $DbUser otomatis..."
         $sqlScript = @"
-CREATE DATABASE IF NOT EXISTS \`$DbName\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS $DbName CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$DbUser'@'localhost' IDENTIFIED BY '$DbPass';
 CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED BY '$DbPass';
-GRANT ALL PRIVILEGES ON \`$DbName\`.* TO '$DbUser'@'localhost';
-GRANT ALL PRIVILEGES ON \`$DbName\`.* TO '$DbUser'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON $DbName.* TO '$DbUser'@'localhost';
+GRANT ALL PRIVILEGES ON $DbName.* TO '$DbUser'@'127.0.0.1';
 FLUSH PRIVILEGES;
 "@
         $tempSql = Join-Path $env:TEMP "init_jagat_db.sql"
         Set-Content -Path $tempSql -Value $sqlScript -Force
         
         # Coba konek tanpa password root terlebih dahulu (default XAMPP/MariaDB lokal)
-        & $mysqlCli.Source -h $DbHost -P $DbPort -u root < $tempSql 2>$null
+        Get-Content -Path $tempSql | & $mysqlCli.Source -h $DbHost -P $DbPort -u root 2>$null
         if ($LASTEXITCODE -ne 0) {
-            # Jika butuh password root
             Log-Warn "MySQL root memerlukan password atau hak akses khusus."
         } else {
             Log-Success "Database $DbName dan user $DbUser siap digunakan!"
@@ -361,15 +437,7 @@ FLUSH PRIVILEGES;
         Remove-Item -Path $tempSql -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Log-Warn "Database belum aktif di $DbHost`:$DbPort."
-    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($winget) {
-        Log-Info "Memasang MariaDB Server via Windows Package Manager (winget)..."
-        & $winget.Source install --id MariaDB.Server -e --source winget --accept-source-agreements --accept-package-agreements --silent
-        Start-Sleep -Seconds 5
-    } else {
-        Log-Warn "Silakan aktifkan MariaDB / MySQL (misalnya via XAMPP atau MariaDB Service)."
-    }
+    Log-Warn "Database belum dapat dihubungi di $DbHost`:$DbPort. Silakan pastikan service MySQL/MariaDB menyala."
 }
 
 # -----------------------------------------------------------------------------
@@ -539,10 +607,13 @@ try {
     $gowaExtract = Join-Path $env:TEMP "gowa_extract"
     Download-FileWithProgress $gowaUrl $gowaZip "WhatsApp Gateway ($latestTag)"
     Expand-Archive -Path $gowaZip -DestinationPath $gowaExtract -Force
-    $foundWaExe = Get-ChildItem -Path $gowaExtract -Filter "whatsapp*.exe" -Recurse | Select-Object -First 1
+    $foundWaExe = Get-ChildItem -Path $gowaExtract -Filter "*.exe" -Recurse | Select-Object -First 1
     if ($foundWaExe) {
+        if (-not (Test-Path $WaDir)) { New-Item -ItemType Directory -Path $WaDir -Force | Out-Null }
         Copy-Item -Path $foundWaExe.FullName -Destination $WaExe -Force
         Log-Success "WhatsApp Gateway ($latestTag) terpasang di $WaExe"
+    } else {
+        Log-Error "File executable WhatsApp Gateway (.exe) tidak ditemukan di dalam paket rilis."
     }
     Remove-Item -Path $gowaZip -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $gowaExtract -Recurse -Force -ErrorAction SilentlyContinue
@@ -641,10 +712,6 @@ try {
     Log-Warn "Catatan unduhan Bot Telegram: $($_.Exception.Message)"
 }
 
-# Buat Junction bot-wa -> bot-go
-if (-not (Test-Path $BotWaLink)) {
-    New-Item -ItemType Junction -Path $BotWaLink -Target $BotGoDir -Force | Out-Null
-}
 
 # -----------------------------------------------------------------------------
 # 12. Pendaftaran Windows Background Services (via NSSM)

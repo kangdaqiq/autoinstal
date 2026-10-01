@@ -1,4 +1,4 @@
-<#
+﻿<#
 ==============================================================================
    JAGAT TECH - CLI UTILITY MANAJEMEN SISTEM ABSENSI (WINDOWS)
 ==============================================================================
@@ -119,13 +119,31 @@ switch ($Command.ToLower()) {
         $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue")
         foreach ($s in $services) {
             $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+            if (-not $svc -and $s -eq "Jagat-WhatsApp") {
+                $waExe = Join-Path $ServerDir "www\whatsapp\whatsapp.exe"
+                $nssm = Join-Path $ServerDir "bin\nssm\nssm.exe"
+                if ((Test-Path $waExe) -and (Test-Path $nssm)) {
+                    Write-Host "Mendaftarkan service Jagat-WhatsApp... " -NoNewline
+                    & $nssm install Jagat-WhatsApp "$waExe" "rest --port=3000 --basic-auth=admin:JagatTech123@ --webhook=http://127.0.0.1:5000/webhook" 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp AppDirectory (Split-Path $waExe) 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp AppStdout (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp AppStderr (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp Start SERVICE_AUTO_START 2>$null | Out-Null
+                    & $nssm start Jagat-WhatsApp 2>$null | Out-Null
+                    $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+                }
+            }
             if ($svc) {
                 Write-Host "Memulai $s... " -NoNewline
                 try {
                     Start-Service -Name $s -ErrorAction Stop
                     Write-Color "[OK]" -color Green
                 } catch {
-                    Write-Color ("[GAGAL: " + $_.Exception.Message + "]") -color Red
+                    if ($svc.Status -eq "Running") {
+                        Write-Color "[RUNNING]" -color Green
+                    } else {
+                        Write-Color ("[GAGAL: " + $_.Exception.Message + "]") -color Red
+                    }
                 }
             }
         }

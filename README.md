@@ -222,3 +222,17 @@ absen logs wa       # Pantau log WhatsApp Gateway
 absen logs queue    # Pantau log antrian pesan / background worker
 absen logs nginx    # Pantau error log web server
 ```
+
+---
+
+## 🗑️ Cara Uninstalasi (Windows)
+
+Jika Anda ingin membersihkan seluruh server dan layanan JAGAT TECH dari komputer Windows:
+1. Klik kanan **`uninstall.bat`** -> Pilih **Run as Administrator** (atau jalankan `powershell -ExecutionPolicy Bypass -File uninstall-windows.ps1`).
+2. Skrip uninstaller akan secara otomatis:
+   - Menghentikan & menghapus seluruh Background Service (`Jagat-PHP-CGI`, `Jagat-Nginx`, `Jagat-Queue`, `Jagat-WhatsApp`, `Jagat-BotWA`, `Jagat-BotTele`).
+   - Menghentikan sisa proses aktif.
+   - Menghapus Desktop Shortcuts & CLI global `absen`.
+   - Membersihkan System Environment PATH.
+   - Memberi opsi apakah ingin menghapus database atau menyimpannya.
+   - Menghapus folder direktori `C:\jagat-server`.

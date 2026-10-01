@@ -1,6 +1,6 @@
-<#
+﻿<#
 ==============================================================================
-   JAGAT TECH — AUTO INSTALLER WSL2 (WINDOWS SUBSYSTEM FOR LINUX)
+   JAGAT TECH - AUTO INSTALLER WSL2 (WINDOWS SUBSYSTEM FOR LINUX)
    Menjalankan 100% Native Linux Stack di Windows secara terisolasi & berkinerja tinggi
 ==============================================================================
 #>
@@ -22,7 +22,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 Clear-Host
 Write-Host @"
 ==============================================================================
-   JAGAT TECH — AUTO INSTALLER WSL2 (UBUNTU / DEBIAN DI WINDOWS)
+   JAGAT TECH - AUTO INSTALLER WSL2 (UBUNTU / DEBIAN DI WINDOWS)
 ==============================================================================
  Rekomendasi terbaik jika Anda menginginkan stabilitas 100% Linux Server
  (Nginx + PHP8.3-FPM Socket + Supervisor Queue + Systemd) di dalam Windows!
@@ -76,7 +76,7 @@ $ports = @(80, 3000, 5000)
 foreach ($p in $ports) {
     netsh interface portproxy delete v4tov4 listenport=$p listenaddress=0.0.0.0 2>$null | Out-Null
     netsh interface portproxy add v4tov4 listenport=$p listenaddress=0.0.0.0 connectport=$p connectaddress=$wslIp
-    Write-Host "  ✔ Port $p diteruskan dari Windows Host -> WSL ($wslIp:$p)" -ForegroundColor Green
+    Write-Host "  ✔ Port $p diteruskan dari Windows Host -> WSL (${wslIp}:$p)" -ForegroundColor Green
 }
 
 # 5. Buat Desktop Shortcuts
