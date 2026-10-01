@@ -174,7 +174,8 @@ $NssmExe    = Join-Path $NssmDir "nssm.exe"
   $WaDir, $BotGoDir, $BotTeleDir,
   (Join-Path $LogsDir "nginx"), (Join-Path $LogsDir "php"),
   (Join-Path $LogsDir "whatsapp"), (Join-Path $LogsDir "bot_wa"),
-  (Join-Path $LogsDir "bot_tele"), (Join-Path $LogsDir "queue")
+  (Join-Path $LogsDir "bot_tele"), (Join-Path $LogsDir "queue"),
+  (Join-Path $LogsDir "scheduler")
 ) | ForEach-Object {
     if (-not (Test-Path $_)) { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 }
@@ -882,18 +883,21 @@ if (Test-Path $NginxExe) {
 # 3. Jagat-Queue Worker
 Install-NssmService "Jagat-Queue" $PhpExe "artisan queue:work --sleep=3 --tries=3" $AppDir (Join-Path $LogsDir "queue\queue.log")
 
-# 4. Jagat-WhatsApp Gateway
+# 4. Jagat-Scheduler (Laravel Schedule Worker)
+Install-NssmService "Jagat-Scheduler" $PhpExe "artisan schedule:work" $AppDir (Join-Path $LogsDir "scheduler\scheduler.log")
+
+# 5. Jagat-WhatsApp Gateway
 if (Test-Path $WaExe) {
     $waArgs = "rest --port=$WaPort --basic-auth=$WaUser`:$WaPass --webhook=http://127.0.0.1:5000/webhook"
     Install-NssmService "Jagat-WhatsApp" $WaExe $waArgs $WaDir (Join-Path $LogsDir "whatsapp\whatsapp.log")
 }
 
-# 5. Jagat-BotWA
+# 6. Jagat-BotWA
 if (Test-Path $BotWaExe) {
     Install-NssmService "Jagat-BotWA" $BotWaExe "" $BotGoDir (Join-Path $LogsDir "bot_wa\bot_wa.log")
 }
 
-# 6. Jagat-BotTele
+# 7. Jagat-BotTele
 if (Test-Path $BotTeleExe) {
     Install-NssmService "Jagat-BotTele" $BotTeleExe "" $BotTeleDir (Join-Path $LogsDir "bot_tele\bot_tele.log")
 }

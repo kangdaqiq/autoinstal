@@ -94,6 +94,7 @@ switch ($Command.ToLower()) {
         Check-ServiceStatus "Web Server (Nginx)" "Jagat-Nginx"
         Check-ServiceStatus "PHP FastCGI (Port 9000)" "Jagat-PHP-CGI"
         Check-ServiceStatus "Laravel Queue Worker" "Jagat-Queue"
+        Check-ServiceStatus "Laravel Scheduler" "Jagat-Scheduler"
         Check-ServiceStatus "WhatsApp Gateway (GOWA)" "Jagat-WhatsApp"
         Check-ServiceStatus "WhatsApp Bot Go (Port 5000)" "Jagat-BotWA"
         Check-ServiceStatus "Telegram Bot Go" "Jagat-BotTele"
@@ -126,7 +127,7 @@ switch ($Command.ToLower()) {
     "start" {
         Show-Header
         Write-Color "`nMenyalakan semua layanan Jagat Tech..." Yellow
-        $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue")
+        $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue", "Jagat-Scheduler")
         foreach ($s in $services) {
             $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
             if (-not $svc -and $s -eq "Jagat-WhatsApp") {
@@ -163,7 +164,7 @@ switch ($Command.ToLower()) {
     "stop" {
         Show-Header
         Write-Color "`nMematikan semua layanan Jagat Tech..." Yellow
-        $services = @("Jagat-Queue", "Jagat-BotTele", "Jagat-BotWA", "Jagat-WhatsApp", "Jagat-Nginx", "Jagat-PHP-CGI")
+        $services = @("Jagat-Scheduler", "Jagat-Queue", "Jagat-BotTele", "Jagat-BotWA", "Jagat-WhatsApp", "Jagat-Nginx", "Jagat-PHP-CGI")
         foreach ($s in $services) {
             $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
             if ($svc) {
@@ -182,7 +183,7 @@ switch ($Command.ToLower()) {
     "restart" {
         Show-Header
         Write-Color "`nMe-restart semua layanan Jagat Tech..." Yellow
-        $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue")
+        $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue", "Jagat-Scheduler")
         foreach ($s in $services) {
             $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
             if ($svc) {
@@ -225,8 +226,9 @@ switch ($Command.ToLower()) {
                 & $PhpBin artisan optimize:clear
                 & $PhpBin artisan optimize
 
-                Write-Color "  - Me-restart antrian background (queue worker)..." Yellow
+                Write-Color "  - Me-restart antrian background (queue worker & scheduler)..." Yellow
                 Restart-Service -Name "Jagat-Queue" -ErrorAction SilentlyContinue
+                Restart-Service -Name "Jagat-Scheduler" -ErrorAction SilentlyContinue
             } finally {
                 Pop-Location
             }
@@ -293,12 +295,13 @@ switch ($Command.ToLower()) {
 
     "logs" {
         $logFile = switch ($SubCommand.ToLower()) {
-            "queue" { Join-Path $WebDir "storage\logs\queue.log" }
-            "bot"   { Join-Path $LogDir "bot_wa\bot_wa.log" }
-            "tele"  { Join-Path $LogDir "bot_tele\bot_tele.log" }
-            "wa"    { Join-Path $LogDir "whatsapp\whatsapp.log" }
-            "nginx" { Join-Path $LogDir "nginx\error.log" }
-            default { Join-Path $WebDir "storage\logs\laravel.log" }
+            "queue"     { Join-Path $LogDir "queue\queue.log" }
+            "scheduler" { Join-Path $LogDir "scheduler\scheduler.log" }
+            "bot"       { Join-Path $LogDir "bot_wa\bot_wa.log" }
+            "tele"      { Join-Path $LogDir "bot_tele\bot_tele.log" }
+            "wa"        { Join-Path $LogDir "whatsapp\whatsapp.log" }
+            "nginx"     { Join-Path $LogDir "nginx\error.log" }
+            default     { Join-Path $WebDir "storage\logs\laravel.log" }
         }
 
         if (Test-Path $logFile) {
@@ -328,9 +331,10 @@ switch ($Command.ToLower()) {
         Write-Color "  absen logs        " Green -NoNewline; Write-Host " - Pantau log Laravel realtime"
         Write-Color "  absen logs bot    " Green -NoNewline; Write-Host " - Pantau log WhatsApp Bot Go"
         Write-Color "  absen logs tele   " Green -NoNewline; Write-Host " - Pantau log Telegram Bot Go"
-        Write-Color "  absen logs wa     " Green -NoNewline; Write-Host " - Pantau log WhatsApp Gateway"
-        Write-Color "  absen logs queue  " Green -NoNewline; Write-Host " - Pantau log Laravel Queue Worker"
-        Write-Color "  absen logs nginx  " Green -NoNewline; Write-Host " - Pantau log error Nginx"
+        Write-Color "  absen logs wa        " Green -NoNewline; Write-Host " - Pantau log WhatsApp Gateway"
+        Write-Color "  absen logs queue     " Green -NoNewline; Write-Host " - Pantau log Laravel Queue Worker"
+        Write-Color "  absen logs scheduler " Green -NoNewline; Write-Host " - Pantau log Laravel Scheduler"
+        Write-Color "  absen logs nginx     " Green -NoNewline; Write-Host " - Pantau log error Nginx"
         Write-Host ""
     }
 }
