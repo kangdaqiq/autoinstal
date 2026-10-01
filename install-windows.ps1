@@ -672,18 +672,25 @@ if (Test-Path $envFile) {
         "(?m)^DB_DATABASE=.*"        = "DB_DATABASE=$DbName"
         "(?m)^DB_USERNAME=.*"        = "DB_USERNAME=$DbUser"
         "(?m)^DB_PASSWORD=.*"        = "DB_PASSWORD=$DbPass"
+        "(?m)^GOWA_API_BASE_URL=.*"  = "GOWA_API_BASE_URL=http://127.0.0.1:$WaPort"
         "(?m)^GOWA_API_URL=.*"       = "GOWA_API_URL=http://127.0.0.1:$WaPort"
         "(?m)^GOWA_API_USER=.*"      = "GOWA_API_USER=$WaUser"
         "(?m)^GOWA_API_PASS=.*"      = "GOWA_API_PASS=$WaPass"
+        "(?m)^WA_API_BASE_URL=.*"    = "WA_API_BASE_URL=http://127.0.0.1:$WaPort"
+        "(?m)^WA_API_URL=.*"         = "WA_API_URL=http://127.0.0.1:$WaPort"
+        "(?m)^WA_API_USER=.*"        = "WA_API_USER=$WaUser"
+        "(?m)^WA_API_PASS=.*"        = "WA_API_PASS=$WaPass"
         "(?m)^QUEUE_CONNECTION=.*"   = "QUEUE_CONNECTION=database"
         "(?m)^LICENSE_SERVER_URL=.*" = "LICENSE_SERVER_URL=https://absen.jagattech.my.id"
     }
 
     foreach ($pattern in $replacements.Keys) {
-        $envContent = [System.Text.RegularExpressions.Regex]::Replace($envContent, $pattern, $replacements[$pattern])
-    }
-    if ($envContent -notmatch '(?m)^LICENSE_SERVER_URL=') {
-        $envContent += "`r`nLICENSE_SERVER_URL=https://absen.jagattech.my.id`r`n"
+        if ($envContent -match $pattern) {
+            $envContent = [System.Text.RegularExpressions.Regex]::Replace($envContent, $pattern, $replacements[$pattern])
+        } else {
+            $rawLine = $replacements[$pattern]
+            $envContent += "`r`n$rawLine"
+        }
     }
     Set-Content -Path $envFile -Value $envContent -Force
 }
@@ -861,7 +868,10 @@ function Install-NssmService([string]$name, [string]$appPath, [string]$appArgs, 
     & $NssmExe remove $name confirm 2>$null
     
     Log-Info "Mendaftarkan service: $name..."
-    & $NssmExe install $name "$appPath" $appArgs
+    & $NssmExe install $name "$appPath"
+    if ($appArgs) {
+        & $NssmExe set $name AppParameters "$appArgs"
+    }
     & $NssmExe set $name AppDirectory "$workDir"
     & $NssmExe set $name AppStdout "$logFile"
     & $NssmExe set $name AppStderr "$logFile"
@@ -888,7 +898,7 @@ Install-NssmService "Jagat-Scheduler" $PhpExe "artisan schedule:work" $AppDir (J
 
 # 5. Jagat-WhatsApp Gateway
 if (Test-Path $WaExe) {
-    $waArgs = "rest --port=$WaPort --basic-auth=$WaUser`:$WaPass --webhook=http://127.0.0.1:5000/webhook"
+    $waArgs = "rest --port=$WaPort --basic-auth=$WaUser`:$WaPass,$WaUser`:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=http://127.0.0.1:5000/webhook"
     Install-NssmService "Jagat-WhatsApp" $WaExe $waArgs $WaDir (Join-Path $LogsDir "whatsapp\whatsapp.log")
 }
 

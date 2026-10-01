@@ -135,7 +135,8 @@ switch ($Command.ToLower()) {
                 $nssm = Join-Path $ServerDir "bin\nssm\nssm.exe"
                 if ((Test-Path $waExe) -and (Test-Path $nssm)) {
                     Write-Host "Mendaftarkan service Jagat-WhatsApp... " -NoNewline
-                    & $nssm install Jagat-WhatsApp "$waExe" "rest --port=3000 --basic-auth=admin:JagatTech123@ --webhook=http://127.0.0.1:5000/webhook" 2>$null | Out-Null
+                    & $nssm install Jagat-WhatsApp "$waExe" 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp AppParameters "rest --port=3000 --basic-auth=admin:JagatTech123@,admin:jagattech --webhook=http://127.0.0.1:5000/webhook" 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppDirectory (Split-Path $waExe) 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppStdout (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppStderr (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null
