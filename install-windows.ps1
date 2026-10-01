@@ -1,4 +1,4 @@
-﻿<#
+<#
 ==============================================================================
    ██╗ █████╗  ██████╗  █████╗ ████████╗    ████████╗███████╗ ██████╗██╗  ██╗
    ██║██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝    ╚══██╔══╝██╔════╝██╔════╝██║  ██║
@@ -191,6 +191,26 @@ if (-not $gitCmd) {
 # -----------------------------------------------------------------------------
 Log-Step "[2/9] Memeriksa & Menyiapkan PHP 8.3/8.2 dan Composer..."
 
+# Pengecekan & Instalasi Visual C++ 2015-2022 Redistributable (x64) jika belum ada atau versi lama
+try {
+    $vcReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64' -ErrorAction SilentlyContinue
+    $needVcInstall = $true
+    if ($vcReg -and $vcReg.Installed -eq 1 -and [int]$vcReg.Minor -ge 29) {
+        $needVcInstall = $false
+    }
+    if ($needVcInstall) {
+        Log-Info "Menyiapkan Microsoft Visual C++ 2015-2022 Redistributable (x64)..."
+        $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        $vcRedistExe = Join-Path $env:TEMP "vc_redist.x64.exe"
+        Download-FileWithProgress $vcRedistUrl $vcRedistExe "Visual C++ Redistributable"
+        Start-Process -FilePath $vcRedistExe -ArgumentList "/install", "/quiet", "/norestart" -Wait
+        Remove-Item -Path $vcRedistExe -Force -ErrorAction SilentlyContinue
+        Log-Success "Visual C++ Redistributable berhasil dipasang/diperbarui."
+    }
+} catch {
+    Log-Warn "Catatan instalasi Visual C++: $($_.Exception.Message)"
+}
+
 $systemPhp = Get-Command php.exe -ErrorAction SilentlyContinue
 $useSystemPhp = $false
 $PhpExe = ""
@@ -267,9 +287,18 @@ if (-not $useSystemPhp) {
     Log-Success "PHP 8.3 Portable terpasang di $PhpDir"
 }
 
+# Pastikan direktori PHP aktif berada di urutan terdepan PATH sesi saat ini
+$phpBinDir = Split-Path -Path $PhpExe
+$env:PATH = "$phpBinDir;$env:PATH"
+
 # Aktifkan ekstensi yang diperlukan di php.ini
-$currentIniRaw = & $PhpExe -r "echo php_ini_loaded_file();" 2>$null
-$currentIni = ($currentIniRaw | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1)
+if (-not $useSystemPhp) {
+    $currentIni = Join-Path $PhpDir "php.ini"
+} else {
+    $currentIniRaw = & $PhpExe -r "echo php_ini_loaded_file();" 2>$null
+    $currentIni = ($currentIniRaw | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1)
+}
+
 if ($currentIni -and (Test-Path $currentIni)) {
     Log-Info "Memverifikasi ekstensi di $currentIni..."
     $iniContent = Get-Content -Path $currentIni -Raw
@@ -280,8 +309,8 @@ if ($currentIni -and (Test-Path $currentIni)) {
     )
     
     foreach ($ext in $requiredExtensions) {
-        # Uncomment extension=xxx atau extension=php_xxx.dll
-        $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^;extension\s*=\s*(php_)?$ext(\.dll)?", "extension=$ext")
+        # Uncomment extension=xxx atau extension=php_xxx.dll (dengan atau tanpa spasi setelah tanda titik koma)
+        $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^;\s*extension\s*=\s*(php_)?$ext(\.dll)?", "extension=$ext")
     }
 
     # Atur memory_limit, upload_max_filesize, post_max_size
@@ -289,9 +318,14 @@ if ($currentIni -and (Test-Path $currentIni)) {
     $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^upload_max_filesize\s*=.*", "upload_max_filesize = 64M")
     $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^post_max_size\s*=.*", "post_max_size = 64M")
     
-    # Pastikan extension_dir aktif untuk PHP portable
+    # Pastikan extension_dir menggunakan path absolut agar modul PHP selalu ditemukan di direktori mana pun dieksekusi
     if (-not $useSystemPhp) {
-        $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, "(?m)^;extension_dir\s*=\s*`"ext`"", "extension_dir = `"ext`"")
+        $phpExtDir = Join-Path $PhpDir "ext"
+        if ($iniContent -match '(?m)^;?\s*extension_dir\s*=') {
+            $iniContent = [System.Text.RegularExpressions.Regex]::Replace($iniContent, '(?m)^;?\s*extension_dir\s*=.*', "extension_dir = `"$phpExtDir`"")
+        } else {
+            $iniContent += "`r`nextension_dir = `"$phpExtDir`"`r`n"
+        }
     }
     
     Set-Content -Path $currentIni -Value $iniContent -Force
@@ -575,7 +609,15 @@ if (Test-Path $envFile) {
 Push-Location $AppDir
 try {
     Log-Info "Menjalankan composer install..."
-    & $ComposerCmd install --no-dev --optimize-autoloader --no-interaction
+    if ($ComposerCmd -like "*.phar") {
+        & $PhpExe $ComposerCmd install --no-dev --optimize-autoloader --no-interaction
+    } else {
+        & $ComposerCmd install --no-dev --optimize-autoloader --no-interaction
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Composer install gagal (exit code: $LASTEXITCODE). Pastikan ekstensi PHP dan koneksi internet siap."
+    }
 
     Log-Info "Menghasilkan APP_KEY dan migrasi database..."
     & $PhpExe artisan key:generate --force
