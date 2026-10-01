@@ -15,6 +15,7 @@
 param(
     [string]$InstallDir = "C:\jagat-server",
     [string]$Domain = "localhost",
+    [string]$WebPort = "80",
     [string]$DbHost = "127.0.0.1",
     [string]$DbPort = "3306",
     [string]$DbName = "absen_jagat",
@@ -34,7 +35,16 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Write-Host "Meminta hak Administrator (UAC)..." -ForegroundColor Yellow
     $scriptPath = $MyInvocation.MyCommand.Path
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    if ($NonInteractive) { $argList += " -NonInteractive" }
+    if ($PSBoundParameters.Count -gt 0) {
+        foreach ($key in $PSBoundParameters.Keys) {
+            $val = $PSBoundParameters[$key]
+            if ($val -is [switch]) {
+                if ($val) { $argList += " -$key" }
+            } else {
+                $argList += " -$key `"$val`""
+            }
+        }
+    }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argList
     Exit
 }
@@ -137,6 +147,7 @@ Write-Host "Skrip ini akan memasang seluruh stack server, Web Absensi, WhatsApp 
 if (-not $NonInteractive) {
     $InstallDir = Prompt-WithDefault "Lokasi Folder Instalasi Server" $InstallDir
     $Domain     = Prompt-WithDefault "Domain / Host Akses Web" $Domain
+    $WebPort    = Prompt-WithDefault "Port Akses Web Absensi (HTTP)" $WebPort
     $DbPass     = Prompt-WithDefault "Password Database MariaDB/MySQL" $DbPass
     $WaPass     = Prompt-WithDefault "Password WhatsApp Gateway (GOWA)" $WaPass
 }
@@ -557,7 +568,7 @@ http {
     client_max_body_size 64M;
 
     server {
-        listen 80;
+        listen $WebPort;
         server_name $Domain localhost _;
         root "$nginxPublicRoot";
 
@@ -633,8 +644,9 @@ if (Test-Path $envFile) {
     Log-Info "Menyelaraskan konfigurasi .env Web Absensi..."
     $envContent = Get-Content -Path $envFile -Raw
     
+    $appUrl = if ($WebPort -eq "80") { "http://$Domain" } else { "http://${Domain}:${WebPort}" }
     $replacements = @{
-        "(?m)^APP_URL=.*"            = "APP_URL=http://$Domain"
+        "(?m)^APP_URL=.*"            = "APP_URL=$appUrl"
         "(?m)^DB_CONNECTION=.*"      = "DB_CONNECTION=mysql"
         "(?m)^DB_HOST=.*"            = "DB_HOST=$DbHost"
         "(?m)^DB_PORT=.*"            = "DB_PORT=$DbPort"
@@ -895,8 +907,10 @@ $wshShell = New-Object -ComObject WScript.Shell
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 
 # 1. Shortcut Web Absensi
+$webUrl = if ($WebPort -eq "80") { "http://localhost" } else { "http://localhost:$WebPort" }
+$webDisplay = if ($WebPort -eq "80") { "http://localhost (atau http://$Domain)" } else { "http://localhost:$WebPort (atau http://${Domain}:$WebPort)" }
 $scWeb = $wshShell.CreateShortcut((Join-Path $desktopPath "Web Absensi JAGAT TECH.url"))
-$scWeb.TargetPath = "http://localhost"
+$scWeb.TargetPath = $webUrl
 $scWeb.Save()
 
 # 2. Shortcut WhatsApp Portal
@@ -922,7 +936,7 @@ Write-Host @"
 ==============================================================================
 
   - Direktori Server   : $InstallDir
-  - Web Absensi        : http://localhost (atau http://$Domain)
+  - Web Absensi        : $webDisplay
   - WhatsApp Gateway   : http://localhost:$WaPort
                          Username : $WaUser
                          Password : $WaPass

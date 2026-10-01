@@ -1,4 +1,4 @@
-﻿<#
+<#
 ==============================================================================
    JAGAT TECH - CLI UTILITY MANAJEMEN SISTEM ABSENSI (WINDOWS)
 ==============================================================================
@@ -106,9 +106,19 @@ switch ($Command.ToLower()) {
             Write-Color "[ TIDAK DAPAT DIAKSES (Port 3306) ]" -color Red
         }
 
+        $nginxPort = "80"
+        $nginxConf = Join-Path $ServerDir "bin\nginx\conf\nginx.conf"
+        if (Test-Path $nginxConf) {
+            $confContent = Get-Content $nginxConf -Raw
+            if ($confContent -match '(?m)^\s*listen\s+(\d+)\s*;') {
+                $nginxPort = $matches[1]
+            }
+        }
+        $webDisplay = if ($nginxPort -eq "80") { "http://localhost" } else { "http://localhost:$nginxPort" }
+
         Write-Host ""
         Write-Color "Alamat Akses:" Yellow
-        Write-Color "  - Web Absensi     : http://localhost" White
+        Write-Color "  - Web Absensi     : $webDisplay" White
         Write-Color "  - WhatsApp Portal : http://localhost:3000" White
         Write-Color "  - Bot Webhook     : http://127.0.0.1:5000/webhook" White
     }
