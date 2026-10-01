@@ -213,8 +213,12 @@ switch ($Command.ToLower()) {
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
                 composer install --no-dev --optimize-autoloader --no-interaction
                 
-                Write-Color "  - Menjalankan migrasi database..." Yellow
+                Write-Color "  - Menjalankan migrasi database & rehash lisensi..." Yellow
                 & $PhpBin artisan migrate --force
+                & $PhpBin artisan license:rehash --force 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & $PhpBin artisan license:rehash 2>$null
+                }
                 
                 Write-Color "  - Membersihkan dan mengoptimalkan cache Laravel..." Yellow
                 & $PhpBin artisan storage:link --force

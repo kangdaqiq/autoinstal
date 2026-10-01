@@ -670,7 +670,7 @@ deploy_web_absen() {
 
     # Artisan Commands
     if [ -f artisan ]; then
-        run_task "Menghasilkan APP_KEY & menjalankan migrasi database" "php artisan key:generate --force && php artisan migrate --force"
+        run_task "Menghasilkan APP_KEY, migrasi database & rehash lisensi" "php artisan key:generate --force && php artisan migrate --force && (php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true)"
         run_task "Membuat storage link & mengoptimalkan cache Laravel" "php artisan storage:link --force && php artisan optimize:clear && php artisan optimize"
     fi
 
@@ -1131,8 +1131,9 @@ case "$1" in
             export COMPOSER_ALLOW_SUPERUSER=1
             composer install --no-dev --optimize-autoloader --no-interaction
 
-            echo -e "${YELLOW}  • Menjalankan migrasi database baru...${NC}"
+            echo -e "${YELLOW}  • Menjalankan migrasi database & rehash lisensi...${NC}"
             php artisan migrate --force
+            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
 
             echo -e "${YELLOW}  • Membersihkan & mengoptimalkan cache Laravel...${NC}"
             php artisan storage:link --force 2>/dev/null || true

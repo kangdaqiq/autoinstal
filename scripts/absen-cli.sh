@@ -39,8 +39,9 @@ case "$1" in
             export COMPOSER_ALLOW_SUPERUSER=1
             composer install --no-dev --optimize-autoloader --no-interaction
 
-            echo -e "${YELLOW}  • Menjalankan migrasi database baru...${NC}"
+            echo -e "${YELLOW}  • Menjalankan migrasi database & rehash lisensi...${NC}"
             php artisan migrate --force
+            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
 
             echo -e "${YELLOW}  • Membersihkan & mengoptimalkan cache Laravel...${NC}"
             php artisan storage:link --force 2>/dev/null || true

@@ -686,9 +686,13 @@ try {
         }
     }
 
-    Log-Info "Menghasilkan APP_KEY dan migrasi database..."
+    Log-Info "Menghasilkan APP_KEY, migrasi database, dan rehash lisensi..."
     & $PhpExe -c "$currentIni" artisan key:generate --force
     & $PhpExe -c "$currentIni" artisan migrate --force
+    & $PhpExe -c "$currentIni" artisan license:rehash --force 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        & $PhpExe -c "$currentIni" artisan license:rehash 2>$null
+    }
     & $PhpExe -c "$currentIni" artisan storage:link --force
     & $PhpExe -c "$currentIni" artisan optimize:clear
     & $PhpExe -c "$currentIni" artisan optimize
