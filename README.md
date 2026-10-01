@@ -8,6 +8,7 @@ Auto Installer resmi dari **JAGAT TECH** untuk memasang seluruh kebutuhan server
 
 1. **Debian x86_64 (amd64):** PC Server, VPS Cloud (DigitalOcean, Linode, Niagahoster, AWS, dsb).
 2. **Armbian Amlogic S905X (arm64 / armhf):** STB B860H, Fiberhome HG680P, X96 Mini, TX3 Mini, dsb.
+3. **Microsoft Windows (x64):** Windows 10, Windows 11, dan Windows Server 2019/2022 (Native via PowerShell & Windows Services NSSM atau WSL2).
 
 ---
 
@@ -129,6 +130,45 @@ Jika Anda ingin instalasi berjalan otomatis penuh menggunakan setelan default (`
 2. Anda akan diminta mengonfirmasi password dan setelan (Cukup tekan **[ENTER]** untuk menggunakan setelan rekomendasi default).
 3. Installer akan menampilkan animasi progress bar / spinner secara realtime untuk setiap komponen yang sedang diunduh dan dipasang.
 4. Setelah selesai, seluruh URL akses, port, dan kredensial akan ditampilkan di layar.
+
+---
+
+## 🪟 Cara Instalasi di Windows (Windows 10 / 11 / Server)
+
+Tersedia 2 metode instalasi di Windows:
+
+### 🌟 Rekomendasi 1: Native Windows (Paling Praktis Tanpa Virtualisasi)
+Metode ini berjalan langsung di Windows tanpa memerlukan fitur virtualisasi/Hyper-V, sangat ringan, dan seluruh background service didaftarkan ke Windows Service via NSSM (otomatis jalan saat PC booting):
+
+1. **Jalankan Installer:**
+   - Cukup **Klik Ganda (Double-Click)** file:
+     ```
+     install.bat
+     ```
+   - *Atau via PowerShell (Run as Administrator):*
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+     ```
+2. **Apa yang dilakukan installer Windows otomatis:**
+   - Memeriksa atau memasang **Git**, **PHP 8.3/8.2**, **Composer**, dan **MariaDB/MySQL**.
+   - Menyiapkan **Nginx for Windows** terkonfigurasi dengan VirtualHost Laravel & reverse proxy WhatsApp.
+   - Meng-clone repositori Web Absensi (`absen_multi`), konfigurasi `.env`, migrasi database, dan optimize.
+   - Mengunduh rilis resmi **WhatsApp Gateway (GOWA Windows)** dan mengekstrak `whatsapp.exe`.
+   - Mengunduh binary Windows untuk **WhatsApp Bot Go (`bot_wa.exe`)** dan **Telegram Bot Go (`bot_tele.exe`)**.
+   - Mendaftarkan Windows Background Services (`Jagat-Nginx`, `Jagat-PHP-CGI`, `Jagat-Queue`, `Jagat-WhatsApp`, `Jagat-BotWA`, `Jagat-BotTele`) sehingga otomatis aktif di latar belakang saat komputer dinyalakan.
+   - Membuat shortcut di Desktop: *Web Absensi*, *WhatsApp Gateway Portal*, dan *Jagat Server Control*.
+   - Mendaftarkan perintah CLI `absen` ke CMD / PowerShell sistem.
+
+---
+
+### 🐧 Rekomendasi 2: WSL2 (Windows Subsystem for Linux - 100% Linux Parity)
+Metode ini direkomendasikan jika PC Windows Anda mendukung virtualisasi dan Anda ingin lingkungan produksi yang 100% identik dengan server Debian/Ubuntu Linux (Nginx socket, PHP-FPM, Supervisor, Systemd):
+
+1. **Klik Ganda (Double-Click)** file:
+   ```
+   install-wsl.bat
+   ```
+2. Skrip akan menyiapkan distro Ubuntu di WSL2, menjalankan installer Linux Jagat Tech di dalamnya, dan mengatur port-forwarding (port 80, 3000, 5000) ke Windows host.
 
 ---
 
