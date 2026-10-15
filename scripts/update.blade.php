@@ -92,6 +92,71 @@
     .meta-card-php { border-left: 4px solid #6366f1 !important; }
     .meta-card-os { border-left: 4px solid #f59e0b !important; }
     .meta-card-cli { border-left: 4px solid #10b981 !important; }
+
+    /* Terminal Console Window Styles (High-Contrast Guaranteed) */
+    .console-wrapper {
+        border-radius: 0.85rem;
+        overflow: hidden;
+        transition: all 0.25s ease;
+    }
+
+    /* 1. Light Mode Terminal: Background Putih Bersih, Teks Gelap Pekat (Default) */
+    .theme-light-terminal .console-wrapper {
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    }
+    .theme-light-terminal .console-head {
+        background-color: #f1f5f9 !important;
+        border-bottom: 1px solid #cbd5e1 !important;
+    }
+    .theme-light-terminal .console-head-title {
+        color: #0f172a !important;
+    }
+    .theme-light-terminal .console-btn {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    .theme-light-terminal .console-btn:hover {
+        background-color: #e2e8f0 !important;
+        color: #000000 !important;
+    }
+    .theme-light-terminal #consoleOutput {
+        background-color: #ffffff !important;
+        color: #0f172a !important; /* Hitam pekat / Slate 900 tajam */
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+        font-size: 0.8125rem !important;
+        line-height: 1.65 !important;
+    }
+
+    /* 2. Dark Mode Terminal: Background Gelap, Teks Putih Terang (Opsional Toggle) */
+    .theme-dark-terminal .console-wrapper {
+        border: 1px solid #1e293b !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+    }
+    .theme-dark-terminal .console-head {
+        background-color: #0b0f19 !important;
+        border-bottom: 1px solid #1e293b !important;
+    }
+    .theme-dark-terminal .console-head-title {
+        color: #f1f5f9 !important;
+    }
+    .theme-dark-terminal .console-btn {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        border: 1px solid #334155 !important;
+    }
+    .theme-dark-terminal .console-btn:hover {
+        background-color: #334155 !important;
+        color: #ffffff !important;
+    }
+    .theme-dark-terminal #consoleOutput {
+        background-color: #050811 !important;
+        color: #ffffff !important; /* Putih terang benderang */
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+        font-size: 0.8125rem !important;
+        line-height: 1.65 !important;
+    }
 </style>
 
 <div class="space-y-6">
@@ -195,23 +260,26 @@
             </button>
         </div>
 
-        <!-- Terminal Output Screen -->
-        <div class="rounded-xl overflow-hidden border border-gray-900 bg-gray-950 shadow-2xl">
-            <div class="flex items-center justify-between px-4 py-2.5 bg-gray-900 border-b border-gray-800 text-xs">
-                <div class="flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
-                    <span class="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block"></span>
-                    <span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
-                    <span id="termHeader" class="ml-2 font-mono text-gray-300 font-medium">console@jagat-tech:~$ siap menerima perintah</span>
+        <!-- Terminal Output Screen (Default: Putih Bersih / Light Mode) -->
+        <div id="consoleContainer" class="theme-light-terminal">
+            <div class="console-wrapper">
+                <div class="console-head flex items-center justify-between px-4 py-2.5 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
+                        <span id="termHeader" class="console-head-title ml-2 font-mono font-bold">console@jagat-tech:~$ siap menerima perintah</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="themeToggleBtn" onclick="toggleConsoleTheme()" class="console-btn px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors" title="Ubah tema konsol">🌙 Mode Gelap</button>
+                        <button type="button" onclick="copyConsoleLog()" class="console-btn px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors">Salin Log</button>
+                        <button type="button" onclick="clearConsoleLog()" class="console-btn px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors">Bersihkan</button>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" onclick="copyConsoleLog()" class="px-2.5 py-1 text-[11px] font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-md transition-colors border border-gray-700">Salin Log</button>
-                    <button type="button" onclick="clearConsoleLog()" class="px-2.5 py-1 text-[11px] font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-md transition-colors border border-gray-700">Bersihkan</button>
-                </div>
-            </div>
-            <pre id="consoleOutput" class="p-4 font-mono text-xs leading-relaxed text-emerald-400 h-96 overflow-y-auto whitespace-pre-wrap break-all select-text" style="font-family: 'Fira Code', Consolas, Monaco, monospace; background: #050811;">Selamat datang di Konsol Update Sistem JAGAT TECH.
+                <pre id="consoleOutput" class="p-4 font-mono h-96 overflow-y-auto whitespace-pre-wrap break-all select-text">Selamat datang di Konsol Update Sistem JAGAT TECH.
 Tekan salah satu tombol perintah berwarna di atas untuk memulai eksekusi di server.
 Log pembaruan akan mengalir di sini secara realtime...</pre>
+            </div>
         </div>
     </div>
 </div>
@@ -312,5 +380,34 @@ function copyConsoleLog() {
         alert('Gagal menyalin log.');
     });
 }
+
+function toggleConsoleTheme() {
+    const container = document.getElementById('consoleContainer');
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (container.classList.contains('theme-light-terminal')) {
+        container.classList.remove('theme-light-terminal');
+        container.classList.add('theme-dark-terminal');
+        toggleBtn.innerText = '☀️ Mode Putih';
+        localStorage.setItem('jagat_console_theme', 'dark');
+    } else {
+        container.classList.remove('theme-dark-terminal');
+        container.classList.add('theme-light-terminal');
+        toggleBtn.innerText = '🌙 Mode Gelap';
+        localStorage.setItem('jagat_console_theme', 'light');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const savedTheme = localStorage.getItem('jagat_console_theme');
+    if (savedTheme === 'dark') {
+        const container = document.getElementById('consoleContainer');
+        const toggleBtn = document.getElementById('themeToggleBtn');
+        if (container && toggleBtn) {
+            container.classList.remove('theme-light-terminal');
+            container.classList.add('theme-dark-terminal');
+            toggleBtn.innerText = '☀️ Mode Putih';
+        }
+    }
+});
 </script>
 @endsection
