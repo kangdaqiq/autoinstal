@@ -453,9 +453,33 @@ $phpVer = PHP_VERSION;
             font-family: 'Fira Code', monospace;
             font-size: 12.5px;
             line-height: 1.6;
-            color: #a7f3d0;
+            color: #f8fafc;
             white-space: pre-wrap;
             word-break: break-all;
+        }
+
+        /* Light Mode Terminal Support */
+        .term-light-box .terminal-header {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+        }
+        .term-light-box .terminal-title {
+            color: #0f172a !important;
+            font-weight: 700;
+        }
+        .term-light-box .btn-mini {
+            background: #ffffff !important;
+            color: #1e293b !important;
+            border-color: #cbd5e1 !important;
+        }
+        .term-light-box .btn-mini:hover {
+            background: #e2e8f0 !important;
+            color: #000000 !important;
+        }
+        .term-light-box .terminal-body {
+            background: #ffffff !important;
+            border-color: #cbd5e1 !important;
+            color: #0f172a !important; /* Hitam pekat tajam */
         }
 
         .pulse-live {
@@ -535,22 +559,25 @@ $phpVer = PHP_VERSION;
             </button>
         </div>
 
-        <!-- Terminal Output -->
-        <div class="terminal-header">
-            <div class="terminal-dots">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
+        <!-- Terminal Output (Default: Mode Putih) -->
+        <div id="terminalContainer" class="term-light-box">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-yellow"></span>
+                    <span class="dot dot-green"></span>
+                </div>
+                <div class="terminal-title" id="terminalTitle">console@jagat-tech:~$ siap menerima perintah</div>
+                <div class="terminal-tools">
+                    <button class="btn-mini" id="themeToggleBtn" onclick="toggleTheme()" title="Ubah tema konsol">🌙 Mode Gelap</button>
+                    <button class="btn-mini" onclick="copyTerminal()">Salin Log</button>
+                    <button class="btn-mini" onclick="clearTerminal()">Bersihkan</button>
+                </div>
             </div>
-            <div class="terminal-title" id="terminalTitle">console@jagat-tech:~$ siap menerima perintah</div>
-            <div class="terminal-tools">
-                <button class="btn-mini" onclick="copyTerminal()">Salin Log</button>
-                <button class="btn-mini" onclick="clearTerminal()">Bersihkan</button>
-            </div>
-        </div>
-        <div id="terminal" class="terminal-body">Selamat datang di Web Console JAGAT TECH.
+            <div id="terminal" class="terminal-body">Selamat datang di Web Console JAGAT TECH.
 Tekan salah satu tombol di atas untuk menjalankan perintah server.
 Log eksekusi akan mengalir di sini secara langsung (realtime)...</div>
+        </div>
     </div>
 </div>
 
@@ -636,6 +663,31 @@ function copyTerminal() {
         alert('Gagal menyalin log.');
     });
 }
+
+function toggleTheme() {
+    const container = document.getElementById('terminalContainer');
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (container.classList.contains('term-light-box')) {
+        container.classList.remove('term-light-box');
+        toggleBtn.innerText = '☀️ Mode Putih';
+        localStorage.setItem('jt_standalone_theme', 'dark');
+    } else {
+        container.classList.add('term-light-box');
+        toggleBtn.innerText = '🌙 Mode Gelap';
+        localStorage.setItem('jt_standalone_theme', 'light');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (localStorage.getItem('jt_standalone_theme') === 'dark') {
+        const container = document.getElementById('terminalContainer');
+        const toggleBtn = document.getElementById('themeToggleBtn');
+        if (container && toggleBtn) {
+            container.classList.remove('term-light-box');
+            toggleBtn.innerText = '☀️ Mode Putih';
+        }
+    }
+});
 </script>
 
 </body>
