@@ -184,38 +184,63 @@ switch ($Command.ToLower()) {
     "restart" {
         Show-Header
         Write-Color "`nMe-restart semua layanan Jagat Tech..." Yellow
-        # Urutkan agar layanan background & gateway direstart terlebih dahulu, Jagat-PHP-CGI paling akhir
-        $services = @("Jagat-Queue", "Jagat-Scheduler", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Nginx", "Jagat-PHP-CGI")
-        foreach ($s in $services) {
-            $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
-            if ($svc) {
-                Write-Host "Restart $s... " -NoNewline
+        $isFromWeb = ($SubCommand -eq "web" -or $SubCommand -eq "--web" -or $Flag -eq "--web" -or $env:JAGAT_WEB_INVOCATION -eq "1" -or $env:HTTP_HOST -or $env:SERVER_SOFTWARE)
 
-                # Khusus Jagat-PHP-CGI: Jika dipanggil dari dalam lingkungan Web/PHP, lakukan async restart agar koneksi web tidak terputus/deadlock
-                if ($s -eq "Jagat-PHP-CGI") {
-                    $isWebContext = ($env:JAGAT_WEB_INVOCATION -eq "1" -or $env:HTTP_HOST -or $env:SERVER_SOFTWARE -or $env:REQUEST_METHOD)
-                    if (-not $isWebContext) {
-                        try {
-                            $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId = $PID" -ErrorAction SilentlyContinue).ParentProcessId
-                            if ($parentPid) {
-                                $parentName = (Get-Process -Id $parentPid -ErrorAction SilentlyContinue).ProcessName
-                                if ($parentName -match "php") { $isWebContext = $true }
-                            }
-                        } catch {}
-                    }
-
-                    if ($isWebContext) {
-                        Start-Process powershell.exe -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 2; Restart-Service -Name '$s' -Force`"" -WindowStyle Hidden
-                        Write-Color "[OK (Dijadwalkan)]" -color Green
-                        continue
+        if ($isFromWeb) {
+            # Dari Web: Restart background workers, bot, gateway & web server secara aman
+            $services = @("Jagat-Queue", "Jagat-Scheduler", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Nginx")
+            foreach ($s in $services) {
+                $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+                if ($svc) {
+                    Write-Host "Restart $s... " -NoNewline
+                    try {
+                        Restart-Service -Name $s -Force -ErrorAction Stop
+                        Write-Color "[OK]" -color Green
+                    } catch {
+                        if (Test-Path $NssmBin) {
+                            & $NssmBin restart $s 2>$null | Out-Null
+                            Write-Color "[OK (via NSSM)]" -color Green
+                        } else {
+                            Write-Color ("[GAGAL: " + $_.Exception.Message + "]") -color Red
+                        }
                     }
                 }
+            }
 
-                try {
-                    Restart-Service -Name $s -Force -ErrorAction Stop
-                    Write-Color "[OK]" -color Green
-                } catch {
-                    Write-Color ("[GAGAL: " + $_.Exception.Message + "]") -color Red
+            # Khusus PHP: Bersihkan cache framework & opcache agar perubahan kode langsung aktif tanpa memutus koneksi web
+            Write-Host "Refresh Cache PHP & Laravel... " -NoNewline
+            try {
+                if (Test-Path $PhpBin) {
+                    & $PhpBin -r "if(function_exists('opcache_reset')){opcache_reset();}" 2>$null
+                }
+                Push-Location $WebDir
+                & $PhpBin artisan optimize:clear 2>$null | Out-Null
+                Pop-Location
+                Write-Color "[OK]" -color Green
+            } catch {
+                Write-Color "[OK]" -color Green
+            }
+
+            Write-Host "Status Jagat-PHP-CGI... " -NoNewline
+            Write-Color "[AKTIF (Koneksi Web Dijaga)]" -color Green
+        } else {
+            # Dari Terminal CLI (CMD / PowerShell): Boleh me-restart seluruh service termasuk PHP-CGI
+            $services = @("Jagat-Queue", "Jagat-Scheduler", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Nginx", "Jagat-PHP-CGI")
+            foreach ($s in $services) {
+                $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+                if ($svc) {
+                    Write-Host "Restart $s... " -NoNewline
+                    try {
+                        Restart-Service -Name $s -Force -ErrorAction Stop
+                        Write-Color "[OK]" -color Green
+                    } catch {
+                        if (Test-Path $NssmBin) {
+                            & $NssmBin restart $s 2>$null | Out-Null
+                            Write-Color "[OK (via NSSM)]" -color Green
+                        } else {
+                            Write-Color ("[GAGAL: " + $_.Exception.Message + "]") -color Red
+                        }
+                    }
                 }
             }
         }

@@ -33,7 +33,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'stream') {
     $validCommands = [
         'update'  => 'update',
         'status'  => 'status',
-        'restart' => 'restart',
+        'restart' => 'restart web',
         'backup'  => 'backup',
         'log_web' => 'logs',
         'log_wa'  => 'logs wa',
