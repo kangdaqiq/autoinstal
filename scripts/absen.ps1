@@ -313,6 +313,54 @@ switch ($Command.ToLower()) {
         }
     }
 
+    "backup" {
+        Show-Header
+        Write-Color "`n=== MEMULAI BACKUP SISTEM ABSENSI (WINDOWS) ===" Yellow
+        $backupDir = Join-Path $ServerDir "backups"
+        if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
+        $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
+
+        # 1. Backup Storage Web
+        $storageDir = Join-Path $WebDir "storage\app"
+        if (Test-Path $storageDir) {
+            Write-Color "[1/2] Membackup direktori file upload storage..." Cyan
+            $zipStorage = Join-Path $backupDir "storage_$timestamp.zip"
+            try {
+                Compress-Archive -Path $storageDir -DestinationPath $zipStorage -Force
+                Write-Color "  - Storage tersimpan: $zipStorage" Green
+            } catch {
+                Write-Color ("  - Gagal membackup storage: " + $_.Exception.Message) Red
+            }
+        }
+
+        # 2. Backup Database
+        $mysqldump = Get-Command mysqldump.exe -ErrorAction SilentlyContinue
+        if (-not $mysqldump) {
+            $candidateDump = Get-ChildItem -Path "C:\Program Files\MariaDB*", "C:\Program Files\MySQL*", "C:\Program Files (x86)\MariaDB*", "C:\Program Files (x86)\MySQL*", "C:\xampp\mysql\bin" -Filter "mysqldump.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidateDump) { $mysqldump = $candidateDump.FullName }
+        }
+
+        if ($mysqldump) {
+            Write-Color "[2/2] Membackup database database MariaDB/MySQL..." Cyan
+            $sqlFile = Join-Path $backupDir "db_absen_$timestamp.sql"
+            try {
+                & $mysqldump -h 127.0.0.1 -u absen_user -pJagatTech123@ absen_jagat --result-file="$sqlFile" 2>$null
+                if ((Test-Path $sqlFile) -and (Get-Item $sqlFile).Length -gt 0) {
+                    Write-Color "  - Database SQL tersimpan: $sqlFile" Green
+                } else {
+                    & $mysqldump -h 127.0.0.1 -u root --all-databases --result-file="$sqlFile" 2>$null
+                    Write-Color "  - Database SQL tersimpan: $sqlFile" Green
+                }
+            } catch {
+                Write-Color ("  - Gagal backup dump database: " + $_.Exception.Message) Red
+            }
+        } else {
+            Write-Color "[2/2] Client mysqldump.exe tidak ditemukan di PATH, backup database dilewati." Yellow
+        }
+
+        Write-Color "`nBackup selesai! Direktori penyimpanan: $backupDir" Green
+    }
+
     "qr" {
         Write-Color "Membuka halaman Portal WhatsApp Gateway di browser..." Cyan
         Start-Process "http://localhost:3000"
@@ -328,6 +376,7 @@ switch ($Command.ToLower()) {
         Write-Color "  absen stop        " Green -NoNewline; Write-Host " - Menghentikan seluruh service"
         Write-Color "  absen restart     " Green -NoNewline; Write-Host " - Me-restart seluruh service"
         Write-Color "  absen update      " Green -NoNewline; Write-Host " - Update Git Web Absensi dan download binary bot terbaru"
+        Write-Color "  absen backup      " Green -NoNewline; Write-Host " - Backup database MySQL dan folder storage file"
         Write-Color "  absen qr          " Green -NoNewline; Write-Host " - Buka portal WhatsApp untuk scan QR code"
         Write-Color "  absen logs        " Green -NoNewline; Write-Host " - Pantau log Laravel realtime"
         Write-Color "  absen logs bot    " Green -NoNewline; Write-Host " - Pantau log WhatsApp Bot Go"

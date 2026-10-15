@@ -943,6 +943,15 @@ try {
     Copy-Item (Join-Path $ScriptsDir "absen.cmd") "C:\Windows\System32\absen.cmd" -Force -ErrorAction SilentlyContinue
 } catch {}
 
+# Salin Web Console & Updater (update.php) ke public direktori web
+$srcUpdatePhp = Join-Path $scriptSrcDir "scripts\update.php"
+$webPublicDir = Join-Path $AppDir "public"
+if (Test-Path $srcUpdatePhp) {
+    if (-not (Test-Path $webPublicDir)) { New-Item -ItemType Directory -Path $webPublicDir -Force | Out-Null }
+    Copy-Item $srcUpdatePhp (Join-Path $webPublicDir "update.php") -Force
+    Log-Success "Web Console & Updater terpasang di: $webPublicDir\update.php"
+}
+
 # Buat Desktop Shortcuts
 $wshShell = New-Object -ComObject WScript.Shell
 $desktopPath = [Environment]::GetFolderPath("Desktop")
@@ -954,12 +963,17 @@ $scWeb = $wshShell.CreateShortcut((Join-Path $desktopPath "Web Absensi JAGAT TEC
 $scWeb.TargetPath = $webUrl
 $scWeb.Save()
 
-# 2. Shortcut WhatsApp Portal
+# 2. Shortcut Web Console & Updater
+$scConsole = $wshShell.CreateShortcut((Join-Path $desktopPath "Web Console & Updater.url"))
+$scConsole.TargetPath = "$webUrl/update.php"
+$scConsole.Save()
+
+# 3. Shortcut WhatsApp Portal
 $scWa = $wshShell.CreateShortcut((Join-Path $desktopPath "WhatsApp Gateway Portal.url"))
 $scWa.TargetPath = "http://localhost:$WaPort"
 $scWa.Save()
 
-# 3. Shortcut CLI Control
+# 4. Shortcut CLI Control
 $scCli = $wshShell.CreateShortcut((Join-Path $desktopPath "Jagat Server Control (CLI).lnk"))
 $scCli.TargetPath = "cmd.exe"
 $scCli.Arguments = "/k absen status"
@@ -978,6 +992,7 @@ Write-Host @"
 
   - Direktori Server   : $InstallDir
   - Web Absensi        : $webDisplay
+  - Web Console/Update : $webUrl/update.php
   - WhatsApp Gateway   : http://localhost:$WaPort
                          Username : $WaUser
                          Password : $WaPass
@@ -993,6 +1008,7 @@ Write-Host @"
   absen stop       -> Menghentikan seluruh service
   absen restart    -> Me-restart seluruh service
   absen update     -> Update kode Web via Git & update binary Bot terbaru
+  absen backup     -> Backup database MariaDB/MySQL & storage file
   absen qr         -> Buka WhatsApp Gateway di browser untuk scan QR
   absen logs       -> Pantau log realtime aplikasi & bot
 

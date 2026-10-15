@@ -208,11 +208,27 @@ Perintah di atas secara otomatis akan:
 
 ---
 
-## 🛠️ Perintah Pintas Lainnya
+## 🌐 Update & Kontrol Server via Browser (Web Console)
+
+Selain lewat terminal SSH / CMD, Anda juga dapat mengupdate dan mengontrol sistem secara langsung melalui browser:
+
+- **Alamat URL:** `http://IP_SERVER/update.php` (atau `http://localhost/update.php` di Windows)
+- **Akses:** Langsung tanpa autentikasi (One-Click Control)
+- **Fitur Tersedia:**
+  - 🔄 **Update Sistem Lengkap:** Menjalankan `absen update` dan menampilkan log terminal streaming realtime.
+  - 📊 **Cek Status Layanan:** Memeriksa apakah Nginx, PHP, MariaDB, WA Gateway, dan Bot aktif.
+  - ⚡ **Restart Semua Layanan:** Me-restart seluruh background service.
+  - 💾 **Backup Data & DB:** Backup database MySQL dan storage file.
+  - 📋 **Terminal Live Stream:** Dilengkapi tombol copy log dan auto-scroll realtime.
+
+---
+
+## 🛠️ Perintah Pintas Lainnya (CLI)
 
 ```bash
 absen status        # Cek status kesehatan Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue
 absen restart       # Restart seluruh service server, WA, dan kedua Bot
+absen backup        # Backup database MySQL dan folder storage file
 absen swap-delete   # Hapus file swap 2GB untuk melegakan kembali ruang penyimpanan internal eMMC
 absen swap-create   # Buat kembali swap file 2GB jika sewaktu-waktu dibutuhkan (eMMC Safe)
 absen logs          # Pantau log Laravel realtime

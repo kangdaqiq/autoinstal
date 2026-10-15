@@ -1252,6 +1252,24 @@ case "$1" in
         supervisorctl restart absen-queue:* 2>/dev/null || true
         echo -e "${GREEN}Semua service berhasil di-restart!${NC}"
         ;;
+    backup)
+        echo -e "${CYAN}=== MEMULAI BACKUP SISTEM (DATABASE & STORAGE) ===${NC}"
+        if [ -f "/var/www/web/scripts/backup.sh" ]; then
+            bash /var/www/web/scripts/backup.sh
+        elif [ -f "${APP_DIR}/scripts/backup.sh" ]; then
+            bash "${APP_DIR}/scripts/backup.sh"
+        elif [ -f "/usr/local/bin/absen-backup" ]; then
+            bash /usr/local/bin/absen-backup
+        else
+            mkdir -p /var/backups/absen
+            ts=$(date +"%Y%m%d_%H%M%S")
+            echo "Membackup storage..."
+            [ -d "${APP_DIR}/storage/app" ] && tar -czf "/var/backups/absen/storage_${ts}.tar.gz" -C "${APP_DIR}/storage" app 2>/dev/null || true
+            echo "Membackup database..."
+            mysqldump -u "${DB_USER:-absen_user}" -p"${DB_PASS:-JagatTech123@}" "${DB_NAME:-absen_jagat}" 2>/dev/null | gzip > "/var/backups/absen/db_${ts}.sql.gz" || true
+            echo -e "${GREEN}Backup selesai! File tersimpan di /var/backups/absen${NC}"
+        fi
+        ;;
     logs)
         case "$2" in
             tele)
@@ -1317,6 +1335,7 @@ case "$1" in
         echo -e "  ${GREEN}absen update${NC}         - Update web via Git & update compiled binary bot wa & bot tele"
         echo -e "  ${GREEN}absen status${NC}         - Cek status Nginx, PHP, MariaDB, WA Gateway, Bot WA, Bot Tele, dan Queue"
         echo -e "  ${GREEN}absen restart${NC}        - Restart seluruh service server, WA, dan Bot"
+        echo -e "  ${GREEN}absen backup${NC}         - Backup database MySQL & direktori storage saat ini"
         echo -e "  ${GREEN}absen swap-delete${NC}    - Hapus Swap File 2GB untuk melegakan penyimpanan internal eMMC"
         echo -e "  ${GREEN}absen swap-create${NC}    - Buat kembali Swap File 2GB jika sewaktu-waktu dibutuhkan"
         echo -e "  ${GREEN}absen logs${NC}           - Pantau log Laravel secara realtime"
@@ -1332,6 +1351,24 @@ EOF
 
     chmod +x /usr/local/bin/absen
     log_success "Command '${C_BOLD}absen${C_RESET}' berhasil dibuat di /usr/local/bin/absen."
+
+    # Konfigurasi izin sudoers untuk www-data (agar bisa trigger absen update lewat browser)
+    echo "${WEB_USER} ALL=(ALL) NOPASSWD: /usr/local/bin/absen" > /etc/sudoers.d/jagat-absen-web 2>/dev/null || true
+    chmod 0440 /etc/sudoers.d/jagat-absen-web 2>/dev/null || true
+    log_success "Izin sudoers Web Updater untuk user ${WEB_USER} berhasil dikonfigurasi."
+
+    # Pasang Web Console & Updater (update.php) di folder public web
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local web_public="${APP_DIR}/public"
+    mkdir -p "${web_public}"
+    if [ -f "${script_dir}/scripts/update.php" ]; then
+        cp -f "${script_dir}/scripts/update.php" "${web_public}/update.php"
+    else
+        curl -sSL -H 'Cache-Control: no-cache' "https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/scripts/update.php" -o "${web_public}/update.php" 2>/dev/null || true
+    fi
+    chown ${WEB_USER}:${WEB_USER} "${web_public}/update.php" 2>/dev/null || true
+    chmod 644 "${web_public}/update.php" 2>/dev/null || true
+    log_success "Web Console & Updater (update.php) berhasil dipasang di ${web_public}/update.php."
 }
 
 # --- Ringkasan Hasil Akhir ---
@@ -1368,6 +1405,7 @@ EOF
     echo ""
     echo -e "${C_BOLD}🌐 INFORMASI AKSES WEB ABSENSI:${C_RESET}"
     echo -e "   • Alamat Web        : ${C_BOLD}${C_GREEN}${APP_URL}${C_RESET}"
+    echo -e "   • Web Console/Update: ${C_BOLD}${C_CYAN}${APP_URL}/update.php${C_RESET}"
     echo -e "   • Direktori Web     : ${C_WHITE}${APP_DIR}${C_RESET}"
     echo -e "   • Sumber Git        : ${C_CYAN}${GIT_REPO}${C_RESET}"
     echo -e "   • Target Perangkat  : ${C_YELLOW}${DEVICE_TITLE}${C_RESET}"
@@ -1408,6 +1446,7 @@ EOF
     echo -e "${C_BOLD}🛠️ PERINTAH PINTAS LAINNYA:${C_RESET}"
     echo -e "   • Cek status server : ${C_GREEN}absen status${C_RESET}"
     echo -e "   • Restart service   : ${C_GREEN}absen restart${C_RESET}"
+    echo -e "   • Backup DB & file  : ${C_GREEN}absen backup${C_RESET}"
     echo -e "   • Pantau log web    : ${C_GREEN}absen logs${C_RESET}"
     echo -e "   • Pantau log bot WA : ${C_GREEN}absen logs bot${C_RESET}"
     echo -e "   • Pantau log tele   : ${C_GREEN}absen logs tele${C_RESET}"

@@ -170,12 +170,28 @@ case "$1" in
         echo -e "${GREEN}Semua service berhasil di-restart!${NC}"
         ;;
     backup)
+        echo -e "${CYAN}=== MEMULAI BACKUP SISTEM (DATABASE & STORAGE) ===${NC}"
         if [ -f "/var/www/web/scripts/backup.sh" ]; then
             bash /var/www/web/scripts/backup.sh
+        elif [ -f "${APP_DIR}/scripts/backup.sh" ]; then
+            bash "${APP_DIR}/scripts/backup.sh"
         elif [ -f "/usr/local/bin/absen-backup" ]; then
             bash /usr/local/bin/absen-backup
         else
-            echo -e "${RED}Script backup tidak ditemukan.${NC}"
+            mkdir -p /var/backups/absen
+            ts=$(date +"%Y%m%d_%H%M%S")
+            echo "Membackup storage..."
+            [ -d "${APP_DIR}/storage/app" ] && tar -czf "/var/backups/absen/storage_${ts}.tar.gz" -C "${APP_DIR}/storage" app 2>/dev/null || true
+            echo "Membackup database..."
+            if [ -f "${APP_DIR}/.env" ]; then
+                db_name=$(grep -E '^DB_DATABASE=' "${APP_DIR}/.env" | cut -d '=' -f2 | tr -d '"'\'' ')
+                db_user=$(grep -E '^DB_USERNAME=' "${APP_DIR}/.env" | cut -d '=' -f2 | tr -d '"'\'' ')
+                db_pass=$(grep -E '^DB_PASSWORD=' "${APP_DIR}/.env" | cut -d '=' -f2 | tr -d '"'\'' ')
+                mysqldump -u "${db_user}" -p"${db_pass}" "${db_name}" 2>/dev/null | gzip > "/var/backups/absen/db_${ts}.sql.gz" || true
+            else
+                mysqldump -u absen_user -pJagatTech123@ absen_jagat 2>/dev/null | gzip > "/var/backups/absen/db_${ts}.sql.gz" || true
+            fi
+            echo -e "${GREEN}Backup selesai! File tersimpan di /var/backups/absen${NC}"
         fi
         ;;
     logs)
