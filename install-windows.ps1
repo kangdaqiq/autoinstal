@@ -938,9 +938,14 @@ foreach ($p in $pathsToAdd) {
 [Environment]::SetEnvironmentVariable("JAGAT_SERVER_DIR", $InstallDir, "Machine")
 $env:JAGAT_SERVER_DIR = $InstallDir
 
-# Salin juga ke C:\Windows\System32\absen.cmd agar langsung dapat dipanggil di semua command prompt
+# Atur Execution Policy agar skrip PowerShell dapat dijalankan tanpa hambatan
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction SilentlyContinue
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+
+# Salin juga ke C:\Windows\System32 agar langsung dapat dipanggil di semua command prompt & PowerShell
 try {
     Copy-Item (Join-Path $ScriptsDir "absen.cmd") "C:\Windows\System32\absen.cmd" -Force -ErrorAction SilentlyContinue
+    Copy-Item (Join-Path $ScriptsDir "absen.ps1") "C:\Windows\System32\absen.ps1" -Force -ErrorAction SilentlyContinue
 } catch {}
 
 # Salin Web Console & Updater (update.php) ke public direktori web
