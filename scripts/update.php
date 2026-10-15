@@ -345,41 +345,47 @@ $phpVer = PHP_VERSION;
         }
 
         .btn-update {
-            background: linear-gradient(135deg, #0284c7, #06b6d4);
-            box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+            background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%) !important;
+            border: 1px solid rgba(6, 182, 212, 0.6) !important;
+            box-shadow: 0 6px 18px rgba(6, 182, 212, 0.42) !important;
+            color: #ffffff !important;
         }
         .btn-update:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(6, 182, 212, 0.45);
+            box-shadow: 0 8px 25px rgba(6, 182, 212, 0.58) !important;
         }
 
         .btn-status {
-            background: #1f2937;
-            border-color: #4b5563;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+            border: 1px solid rgba(124, 58, 237, 0.6) !important;
+            box-shadow: 0 6px 18px rgba(99, 102, 241, 0.42) !important;
+            color: #ffffff !important;
         }
         .btn-status:hover {
-            background: #374151;
-            border-color: #6b7280;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.58) !important;
         }
 
         .btn-restart {
-            background: #1f2937;
-            border-color: #b45309;
-            color: #fde68a;
+            background: linear-gradient(135deg, #ea580c 0%, #f59e0b 100%) !important;
+            border: 1px solid rgba(245, 158, 11, 0.6) !important;
+            box-shadow: 0 6px 18px rgba(234, 88, 12, 0.42) !important;
+            color: #ffffff !important;
         }
         .btn-restart:hover {
-            background: #78350f;
-            border-color: var(--amber);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(234, 88, 12, 0.58) !important;
         }
 
         .btn-backup {
-            background: #1f2937;
-            border-color: #047857;
-            color: #a7f3d0;
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+            border: 1px solid rgba(16, 185, 129, 0.6) !important;
+            box-shadow: 0 6px 18px rgba(16, 185, 129, 0.42) !important;
+            color: #ffffff !important;
         }
         .btn-backup:hover {
-            background: #065f46;
-            border-color: var(--emerald);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.58) !important;
         }
 
         .btn-action:disabled {
