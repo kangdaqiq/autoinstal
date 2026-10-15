@@ -1244,12 +1244,20 @@ case "$1" in
         ;;
     restart)
         echo -e "${YELLOW}Me-restart semua layanan...${NC}"
-        systemctl restart php8.3-fpm
-        systemctl restart nginx
+        supervisorctl restart absen-queue:* 2>/dev/null || true
         systemctl restart whatsapp.service 2>/dev/null || systemctl restart gowa 2>/dev/null || true
         systemctl restart bot_wa.service 2>/dev/null || true
         systemctl restart bot_tele.service 2>/dev/null || true
-        supervisorctl restart absen-queue:* 2>/dev/null || true
+        systemctl restart nginx 2>/dev/null || true
+
+        # Khusus PHP-FPM: Jika dipanggil dari web, jalankan async agar koneksi HTTP tidak putus
+        if [ "$JAGAT_WEB_INVOCATION" = "1" ] || [ -n "$HTTP_HOST" ] || [ -n "$SERVER_SOFTWARE" ]; then
+            (sleep 2 && systemctl restart php8.3-fpm 2>/dev/null) >/dev/null 2>&1 &
+            echo -e "PHP 8.3 FPM        : ${GREEN}[OK (Dijadwalkan)]${NC}"
+        else
+            systemctl restart php8.3-fpm 2>/dev/null || true
+            echo -e "PHP 8.3 FPM        : ${GREEN}[OK]${NC}"
+        fi
         echo -e "${GREEN}Semua service berhasil di-restart!${NC}"
         ;;
     backup)

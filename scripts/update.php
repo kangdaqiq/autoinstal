@@ -123,6 +123,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'stream') {
         2 => ["pipe", "w"], // stderr
     ];
 
+    @putenv('JAGAT_WEB_INVOCATION=1');
     $process = proc_open($execCommand, $descriptors, $pipes);
 
     if (is_resource($process)) {

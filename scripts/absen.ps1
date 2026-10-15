@@ -184,11 +184,33 @@ switch ($Command.ToLower()) {
     "restart" {
         Show-Header
         Write-Color "`nMe-restart semua layanan Jagat Tech..." Yellow
-        $services = @("Jagat-PHP-CGI", "Jagat-Nginx", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Queue", "Jagat-Scheduler")
+        # Urutkan agar layanan background & gateway direstart terlebih dahulu, Jagat-PHP-CGI paling akhir
+        $services = @("Jagat-Queue", "Jagat-Scheduler", "Jagat-WhatsApp", "Jagat-BotWA", "Jagat-BotTele", "Jagat-Nginx", "Jagat-PHP-CGI")
         foreach ($s in $services) {
             $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
             if ($svc) {
                 Write-Host "Restart $s... " -NoNewline
+
+                # Khusus Jagat-PHP-CGI: Jika dipanggil dari dalam lingkungan Web/PHP, lakukan async restart agar koneksi web tidak terputus/deadlock
+                if ($s -eq "Jagat-PHP-CGI") {
+                    $isWebContext = ($env:JAGAT_WEB_INVOCATION -eq "1" -or $env:HTTP_HOST -or $env:SERVER_SOFTWARE -or $env:REQUEST_METHOD)
+                    if (-not $isWebContext) {
+                        try {
+                            $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId = $PID" -ErrorAction SilentlyContinue).ParentProcessId
+                            if ($parentPid) {
+                                $parentName = (Get-Process -Id $parentPid -ErrorAction SilentlyContinue).ProcessName
+                                if ($parentName -match "php") { $isWebContext = $true }
+                            }
+                        } catch {}
+                    }
+
+                    if ($isWebContext) {
+                        Start-Process powershell.exe -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 2; Restart-Service -Name '$s' -Force`"" -WindowStyle Hidden
+                        Write-Color "[OK (Dijadwalkan)]" -color Green
+                        continue
+                    }
+                }
+
                 try {
                     Restart-Service -Name $s -Force -ErrorAction Stop
                     Write-Color "[OK]" -color Green
