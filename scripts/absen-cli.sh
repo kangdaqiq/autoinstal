@@ -25,6 +25,28 @@ check_service() {
 }
 
 case "$1" in
+    license)
+        echo -e "${CYAN}${BOLD}=== PERBAIKAN & VALIDASI LISENSI JAGAT TECH ===${NC}"
+        if [ -d "$APP_DIR" ]; then
+            cd "$APP_DIR" || exit 1
+            echo -e "${YELLOW}  • Meng-generate ulang hash integritas sistem (license:rehash)...${NC}"
+            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
+
+            echo -e "${YELLOW}  • Mengatur ulang kepemilikan storage/ dan cache ke www-data...${NC}"
+            chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
+
+            echo -e "${YELLOW}  • Memvalidasi lisensi ke server provider (user www-data)...${NC}"
+            su -s /bin/bash -c "cd '$APP_DIR' && php artisan license:validate --force" www-data 2>/dev/null || true
+            [ -f "$APP_DIR/storage/app/license_cache.json" ] && chmod 666 "$APP_DIR/storage/app/license_cache.json" 2>/dev/null || true
+
+            echo -e "${GREEN}${BOLD}✔ Lisensi dan hak akses berkas berhasil disinkronkan & diperbaiki!${NC}"
+        else
+            echo -e "${RED}Direktori $APP_DIR tidak ditemukan.${NC}"
+        fi
+        ;;
+
     update)
         echo -e "${CYAN}${BOLD}=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH ===${NC}"
         
@@ -48,6 +70,17 @@ case "$1" in
             php artisan optimize:clear
             php artisan optimize
 
+            echo -e "${YELLOW}  • Memastikan hak akses direktori & cache milik www-data...${NC}"
+            chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
+
+            # Validasi lisensi sebagai user www-data jika LICENSE_KEY ada di .env
+            if grep -q "^LICENSE_KEY=.\+" "$APP_DIR/.env" 2>/dev/null; then
+                echo -e "${YELLOW}  • Memvalidasi lisensi sebagai user www-data...${NC}"
+                su -s /bin/bash -c "cd '$APP_DIR' && php artisan license:validate --force" www-data 2>/dev/null || true
+            fi
+            [ -f "$APP_DIR/storage/app/license_cache.json" ] && chmod 666 "$APP_DIR/storage/app/license_cache.json" 2>/dev/null || true
             echo -e "${YELLOW}  • Me-restart antrian background (queue worker)...${NC}"
             supervisorctl restart absen-queue:* 2>/dev/null || true
         fi

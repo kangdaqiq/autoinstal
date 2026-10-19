@@ -247,6 +247,29 @@ switch ($Command.ToLower()) {
         Write-Color "`nSemua layanan berhasil di-restart!" Green
     }
 
+    "license" {
+        Show-Header
+        Write-Color "`n=== SINKRONISASI & PERBAIKAN LISENSI JAGAT TECH (WINDOWS) ===" Cyan
+        if (Test-Path $WebDir) {
+            Push-Location $WebDir
+            try {
+                Write-Color "  • Menjalankan rehash integritas lisensi (license:rehash)..." Yellow
+                & $PhpExe -c "$activePhpDir\php.ini" artisan license:rehash --force 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & $PhpExe -c "$activePhpDir\php.ini" artisan license:rehash 2>$null
+                }
+                Write-Color "  • Memvalidasi lisensi ke server provider..." Yellow
+                & $PhpExe -c "$activePhpDir\php.ini" artisan license:validate --force
+                Write-Color "✔ Sinkronisasi lisensi selesai!" Green
+            } catch {
+                Write-Color "Gagal validasi lisensi: $($_.Exception.Message)" Red
+            } finally {
+                Pop-Location
+            }
+        } else {
+            Write-Color "Direktori $WebDir tidak ditemukan." Red
+        }
+    }
     "update" {
         Show-Header
         Write-Color "`n=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH (WINDOWS) ===" Yellow

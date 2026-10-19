@@ -150,6 +150,7 @@ if (-not $NonInteractive) {
     $WebPort    = Prompt-WithDefault "Port Akses Web Absensi (HTTP)" $WebPort
     $DbPass     = Prompt-WithDefault "Password Database MariaDB/MySQL" $DbPass
     $WaPass     = Prompt-WithDefault "Password WhatsApp Gateway (GOWA)" $WaPass
+    $LicenseKey = Prompt-WithDefault "Lisensi Klien / LICENSE_KEY (Opsional)" ""
 }
 
 $BinDir     = Join-Path $InstallDir "bin"
@@ -415,26 +416,52 @@ Log-Success "Composer siap digunakan di $compPhar"
 # -----------------------------------------------------------------------------
 Log-Step "[3/9] Menyiapkan NSSM (Service Daemon Manager)..."
 if (-not (Test-Path $NssmExe)) {
-    $nssmZip = Join-Path $env:TEMP "nssm.zip"
+    $nssmZip     = Join-Path $env:TEMP "nssm.zip"
     $nssmExtract = Join-Path $env:TEMP "nssm_extract"
-    Download-FileWithProgress "https://nssm.cc/release/nssm-2.24.zip" $nssmZip "NSSM 2.24"
-    Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
-    $foundNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse | Where-Object { $_.DirectoryName -like "*win64*" } | Select-Object -First 1
-    if (-not (Test-Path $NssmDir)) { New-Item -ItemType Directory -Path $NssmDir -Force | Out-Null }
-    if ($foundNssm) {
-        Copy-Item -Path $foundNssm.FullName -Destination $NssmExe -Force
-    } else {
-        $anyNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse | Select-Object -First 1
-        if ($anyNssm) {
-            Copy-Item -Path $anyNssm.FullName -Destination $NssmExe -Force
+
+    # Coba download dari repo Git sendiri (lebih stabil dari nssm.cc)
+    $nssmGitUrl      = "https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/nssm-2.24.zip"
+    $nssmFallbackUrl = "https://nssm.cc/release/nssm-2.24.zip"
+    $nssmDownloaded  = $false
+
+    Write-Host "  >> Mengunduh NSSM dari repo GitHub (kangdaqiq/autoinstal)..." -ForegroundColor Cyan
+    try {
+        Invoke-WebRequest -Uri $nssmGitUrl -OutFile $nssmZip -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+        $nssmDownloaded = $true
+        Write-Host "  [OK] NSSM berhasil diunduh dari GitHub." -ForegroundColor Green
+    } catch {
+        Write-Host "  [WARN] Gagal dari GitHub. Mencoba fallback ke nssm.cc..." -ForegroundColor Yellow
+        try {
+            Invoke-WebRequest -Uri $nssmFallbackUrl -OutFile $nssmZip -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+            $nssmDownloaded = $true
+            Write-Host "  [OK] NSSM berhasil diunduh dari nssm.cc (fallback)." -ForegroundColor Green
+        } catch {
+            Write-Host "  [ERROR] Gagal mengunduh NSSM dari semua sumber." -ForegroundColor Red
         }
     }
+
+    if ($nssmDownloaded -and (Test-Path $nssmZip)) {
+        Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
+        $foundNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse |
+                     Where-Object { $_.DirectoryName -like "*win64*" } |
+                     Select-Object -First 1
+        if (-not (Test-Path $NssmDir)) { New-Item -ItemType Directory -Path $NssmDir -Force | Out-Null }
+        if ($foundNssm) {
+            Copy-Item -Path $foundNssm.FullName -Destination $NssmExe -Force
+        } else {
+            $anyNssm = Get-ChildItem -Path $nssmExtract -Filter "nssm.exe" -Recurse | Select-Object -First 1
+            if ($anyNssm) {
+                Copy-Item -Path $anyNssm.FullName -Destination $NssmExe -Force
+            }
+        }
+    }
+
     if (Test-Path $NssmExe) {
         Log-Success "NSSM 64-bit terpasang di $NssmExe"
     } else {
         Log-Error "Gagal memasang NSSM di $NssmExe"
     }
-    Remove-Item -Path $nssmZip -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $nssmZip     -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
 } else {
     Log-Success "NSSM sudah terpasang di $NssmExe"
@@ -683,6 +710,9 @@ if (Test-Path $envFile) {
         "(?m)^QUEUE_CONNECTION=.*"   = "QUEUE_CONNECTION=database"
         "(?m)^LICENSE_SERVER_URL=.*" = "LICENSE_SERVER_URL=https://absen.jagattech.my.id"
     }
+    if (-not [string]::IsNullOrWhiteSpace($LicenseKey)) {
+        $replacements["(?m)^LICENSE_KEY=.*"] = "LICENSE_KEY=$LicenseKey"
+    }
 
     foreach ($pattern in $replacements.Keys) {
         if ($envContent -match $pattern) {
@@ -727,6 +757,10 @@ try {
     & $PhpExe -c "$currentIni" artisan storage:link --force
     & $PhpExe -c "$currentIni" artisan optimize:clear
     & $PhpExe -c "$currentIni" artisan optimize
+    if (-not [string]::IsNullOrWhiteSpace($LicenseKey)) {
+        Log-Info "Memvalidasi lisensi ke server provider..."
+        & $PhpExe -c "$currentIni" artisan license:validate --force 2>$null
+    }
     Log-Success "Web Absensi berhasil di-deploy dan teroptimasi."
 } catch {
     Log-Warn "Ada catatan saat migrasi/composer: $($_.Exception.Message)"

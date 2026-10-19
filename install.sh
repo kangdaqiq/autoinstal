@@ -367,6 +367,12 @@ collect_inputs() {
     WA_PASS=$(safe_read "   Password WhatsApp Gateway [${DEFAULT_PASSWORD}]: " "${DEFAULT_PASSWORD}")
     WA_WEBHOOK_URL=$(safe_read "   Webhook URL WhatsApp [${WA_WEBHOOK_DEFAULT}]: " "${WA_WEBHOOK_DEFAULT}")
 
+    # 4. Lisensi Klien (LICENSE_KEY)
+    echo ""
+    echo -e "${ICON_GEAR} ${C_BOLD}Pengaturan Lisensi Klien (LICENSE_KEY):${C_RESET}"
+    echo -e "   ${C_DIM}(Kosongkan jika ingin dimasukkan nanti lewat menu Pengaturan Web)${C_RESET}"
+    LICENSE_KEY=$(safe_read "   License Key []: " "")
+
     echo ""
     echo -e "──────────────────────────────────────────────────────────────────────────────"
     echo -e "${C_BOLD}${C_GREEN}RINGKASAN TUGAS INSTALASI:${C_RESET}"
@@ -376,6 +382,11 @@ collect_inputs() {
     echo -e "  • Database       : ${C_BOLD}${DB_NAME}${C_RESET} (User: ${DB_USER})"
     echo -e "  • WhatsApp GW    : ${C_BOLD}Port ${WA_PORT}${C_RESET} (User: ${WA_USER})"
     echo -e "  • WA Webhook     : ${C_CYAN}${WA_WEBHOOK_URL}${C_RESET}"
+    if [ -n "${LICENSE_KEY}" ]; then
+        echo -e "  • License Key    : ${C_GREEN}${LICENSE_KEY}${C_RESET}"
+    else
+        echo -e "  • License Key    : ${C_DIM}(Belum diisi - dapat dimasukkan via Web)${C_RESET}"
+    fi
     echo -e "  • Engine Stack   : ${C_WHITE}Nginx, PHP 8.3, MariaDB, Composer, Golang, GOWA${C_RESET}"
     echo -e "──────────────────────────────────────────────────────────────────────────────"
     
@@ -560,15 +571,49 @@ install_composer_and_go() {
     fi
     log_success "Composer 2 terpasang di /usr/local/bin/composer."
 
-    # Golang compiler tidak lagi dipaksa diunduh (~400MB) karena Bot WhatsApp & Telegram menggunakan precompiled binary.
+    # Golang — Install otomatis versi terbaru dari golang.org
     if command -v /usr/local/go/bin/go &> /dev/null; then
         local current_go
         current_go=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}')
-        log_success "Golang Engine (${current_go}) terdeteksi di sistem."
+        log_success "Golang Engine (${current_go}) sudah terinstall, melewati instalasi ulang."
     else
-        log_info "Kompilasi lokal dilewati: WhatsApp Bot & Telegram Bot menggunakan binary compiled siap pakai."
+        log_info "Golang belum terinstall. Mengunduh versi terbaru dari golang.org..."
+
+        # Ambil versi terbaru dari API golang.org
+        local go_latest_ver=""
+        go_latest_ver=$(curl -sSL --connect-timeout 5 --max-time 10 "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1 | tr -d '[:space:]' || echo "")
+        if [ -z "$go_latest_ver" ]; then
+            go_latest_ver="go1.23.4"
+            log_warn "Tidak dapat menjangkau golang.org API. Menggunakan fallback: ${go_latest_ver}"
+        else
+            log_info "Versi Go terbaru: ${C_BOLD}${C_GREEN}${go_latest_ver}${C_RESET}"
+        fi
+
+        # Tentukan nama file berdasarkan arsitektur
+        local go_tarball=""
+        case "$GO_ARCH" in
+            amd64)   go_tarball="${go_latest_ver}.linux-amd64.tar.gz" ;;
+            arm64)   go_tarball="${go_latest_ver}.linux-arm64.tar.gz" ;;
+            armv6l)  go_tarball="${go_latest_ver}.linux-armv6l.tar.gz" ;;
+            386)     go_tarball="${go_latest_ver}.linux-386.tar.gz" ;;
+            *)       go_tarball="${go_latest_ver}.linux-amd64.tar.gz" ;;
+        esac
+
+        local go_url="https://go.dev/dl/${go_tarball}"
+        local go_tmp="/tmp/${go_tarball}"
+
+        run_task "Mengunduh Go (${go_latest_ver} - ${GO_ARCH}) dari golang.org" \
+            "curl -sSL -f '${go_url}' -o '${go_tmp}'"
+
+        run_task "Mengekstrak & memasang Go ke /usr/local/go" \
+            "rm -rf /usr/local/go && tar -C /usr/local -xzf '${go_tmp}' && rm -f '${go_tmp}'"
+
+        local installed_go_ver
+        installed_go_ver=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}')
+        log_success "Golang Engine (${installed_go_ver}) berhasil diinstal ke /usr/local/go."
     fi
 
+    # Setup PATH Go untuk semua user (permanen via /etc/profile.d)
     if [ -d "/usr/local/go/bin" ]; then
         cat << 'EOF' > /etc/profile.d/golang.sh
 export GOROOT=/usr/local/go
@@ -579,6 +624,7 @@ EOF
         export GOROOT=/usr/local/go
         export GOPATH=$HOME/go
         export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+        log_success "PATH Go sudah dikonfigurasi di /etc/profile.d/golang.sh."
     fi
 }
 
@@ -636,6 +682,9 @@ deploy_web_absen() {
     set_env_val "APP_MODE" "self_hosted"
 
     set_env_val "LICENSE_SERVER_URL" "https://absen.jagattech.my.id"
+    if [ -n "${LICENSE_KEY}" ]; then
+        set_env_val "LICENSE_KEY" "${LICENSE_KEY}"
+    fi
 
     # Database Configuration (Harmonized)
     set_env_val "DB_CONNECTION" "mysql"
@@ -685,6 +734,13 @@ deploy_web_absen() {
     if [ -d "${APP_DIR}/bootstrap/cache" ]; then
         chmod -R 775 "${APP_DIR}/bootstrap/cache"
         chown -R ${WEB_USER}:${WEB_USER} "${APP_DIR}/bootstrap/cache"
+    fi
+    [ -f "${APP_DIR}/storage/app/license_integrity.json" ] && chmod 664 "${APP_DIR}/storage/app/license_integrity.json" 2>/dev/null || true
+
+    # Validasi lisensi awal atas nama www-data jika LICENSE_KEY diisi
+    if [ -n "${LICENSE_KEY}" ]; then
+        run_task "Memvalidasi lisensi ke server provider (user ${WEB_USER})" "su -s /bin/bash -c 'cd \"${APP_DIR}\" && php artisan license:validate --force' ${WEB_USER} 2>/dev/null || true"
+        [ -f "${APP_DIR}/storage/app/license_cache.json" ] && chmod 666 "${APP_DIR}/storage/app/license_cache.json" 2>/dev/null || true
     fi
 
     log_success "Web Absensi berhasil diinstal dari Git ke ${APP_DIR}."
@@ -1117,6 +1173,28 @@ BOLD="\033[1m"
 NC="\033[0m"
 
 case "$1" in
+    license)
+        echo -e "${CYAN}${BOLD}=== PERBAIKAN & VALIDASI LISENSI JAGAT TECH ===${NC}"
+        if [ -d "$APP_DIR" ]; then
+            cd "$APP_DIR" || exit 1
+            echo -e "${YELLOW}  • Meng-generate ulang hash integritas sistem (license:rehash)...${NC}"
+            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
+
+            echo -e "${YELLOW}  • Mengatur ulang kepemilikan storage/ dan cache ke www-data...${NC}"
+            chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
+
+            echo -e "${YELLOW}  • Memvalidasi lisensi ke server provider (user www-data)...${NC}"
+            su -s /bin/bash -c "cd '$APP_DIR' && php artisan license:validate --force" www-data 2>/dev/null || true
+            [ -f "$APP_DIR/storage/app/license_cache.json" ] && chmod 666 "$APP_DIR/storage/app/license_cache.json" 2>/dev/null || true
+
+            echo -e "${GREEN}${BOLD}✔ Lisensi dan hak akses berkas berhasil disinkronkan & diperbaiki!${NC}"
+        else
+            echo -e "${RED}Direktori $APP_DIR tidak ditemukan.${NC}"
+        fi
+        ;;
+
     update)
         echo -e "${CYAN}${BOLD}=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH ===${NC}"
         
@@ -1139,6 +1217,18 @@ case "$1" in
             php artisan storage:link --force 2>/dev/null || true
             php artisan optimize:clear
             php artisan optimize
+
+            echo -e "${YELLOW}  • Memastikan hak akses direktori & cache milik www-data...${NC}"
+            chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
+
+            # Validasi lisensi sebagai user www-data jika LICENSE_KEY ada di .env
+            if grep -q "^LICENSE_KEY=.\+" "$APP_DIR/.env" 2>/dev/null; then
+                echo -e "${YELLOW}  • Memvalidasi lisensi sebagai user www-data...${NC}"
+                su -s /bin/bash -c "cd '$APP_DIR' && php artisan license:validate --force" www-data 2>/dev/null || true
+            fi
+            [ -f "$APP_DIR/storage/app/license_cache.json" ] && chmod 666 "$APP_DIR/storage/app/license_cache.json" 2>/dev/null || true
 
             echo -e "${YELLOW}  • Me-restart antrian background (queue worker)...${NC}"
             supervisorctl restart absen-queue:* 2>/dev/null || true
