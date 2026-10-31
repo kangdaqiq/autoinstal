@@ -21,9 +21,10 @@ Auto Installer resmi dari **JAGAT TECH** untuk memasang seluruh kebutuhan server
    - **MariaDB Database:** Otomatis membuat database `absen_jagat`, user `absen_user`, dan optimasi hemat tulis eMMC untuk STB S905X.
    - **Composer 2.x & Golang:** Terpasang global di `/usr/local/bin`.
    - **Auto-Swap 2GB:** Aktif otomatis jika RAM < 2GB agar tidak kehabisan memori (OOM).
-2. **Web Absensi (Git-Based):**
+2. **Web Absensi (Official Release ZIP):**
    - Lokasi: `/var/www/web`
-   - Repositori: `https://github.com/kangdaqiq/absen_multi.git`
+   - Paket Rilis: `https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip`
+   - Dilengkapi tanda tangan kriptografi **Ed25519** (`IS_CLIENT_BUILD = true` & `license_integrity.json`) serta dukungan **Permanent Lifetime Activation (Bebas Kunci Saat Offline)**.
    - Menggunakan template `.env.selfhosted.example` yang otomatis tersambung ke database dan API WhatsApp.
    - Migrasi database (`php artisan migrate`), storage link, dan cache optimize otomatis.
    - Antrian background (`absen-queue` via Supervisor) & cron scheduler Laravel.
@@ -189,19 +190,19 @@ Setelah proses instalasi selesai:
 
 ---
 
-## 🔄 Cara Update Web Absensi & Kedua Bot (Git Pull Otomatis)
+## 🔄 Cara Update Web Absensi & Kedua Bot (Release ZIP Otomatis)
 
-Kapan saja ada pembaruan kode di GitHub (baik pada Web Absen, Bot WhatsApp, atau Bot Telegram), Anda cukup menjalankan satu baris perintah ini di terminal:
+Kapan saja ada pembaruan rilis di GitHub (baik pada Web Absen, Bot WhatsApp, atau Bot Telegram), Anda cukup menjalankan satu baris perintah ini di terminal:
 
 ```bash
 absen update
 ```
 
 Perintah di atas secara otomatis akan:
-1. Menarik commit terbaru Web Absen via `git pull`.
+1. Mengunduh & mengekstrak paket rilis resmi terbaru Web Absen (`release-client.zip`) dengan tetap menjaga `.env` dan `license_cache.json`.
 2. Memperbarui paket PHP (`composer install`).
 3. Menjalankan migrasi database baru (`php artisan migrate`).
-4. Membersihkan & mengoptimalkan cache framework (`php artisan optimize`).
+4. Membersihkan & mengoptimalkan cache framework (`php artisan optimize`) serta memvalidasi lisensi Ed25519 (`php artisan license:validate`).
 5. Mengunduh dan memperbarui binary compiled terbaru WhatsApp Bot Go dari GitHub Release.
 6. Mengunduh dan memperbarui binary compiled terbaru Telegram Bot Go dari GitHub Release.
 7. Me-restart queue worker & seluruh bot service.

@@ -324,7 +324,7 @@ if ($currentIni -and (Test-Path $currentIni)) {
     
     $requiredExtensions = @(
         "curl", "fileinfo", "gd", "mbstring", "openssl",
-        "pdo_mysql", "mysqli", "zip", "intl", "sockets", "exif"
+        "pdo_mysql", "mysqli", "zip", "intl", "sockets", "exif", "sodium"
     )
     
     foreach ($ext in $requiredExtensions) {
@@ -662,19 +662,45 @@ Set-Content -Path $nginxConf -Value $nginxConfContent -Force
 Log-Success "Konfigurasi VirtualHost Nginx berhasil diperbarui."
 
 # -----------------------------------------------------------------------------
-# 9. Deploy Web Absensi Multi-Tenant (Git Clone, Composer, Artisan)
+# 9. Deploy Web Absensi Multi-Tenant (GitHub Release ZIP, Composer, Artisan)
 # -----------------------------------------------------------------------------
-Log-Step "[6/9] Men-deploy Aplikasi Web Absensi Multi-Tenant (Git & Laravel)..."
-$gitRepo = "https://github.com/kangdaqiq/absen_multi.git"
-if (-not (Test-Path (Join-Path $AppDir ".git"))) {
-    Log-Info "Meng-clone repositori Web Absensi ke $AppDir..."
-    git clone $gitRepo $AppDir
-} else {
-    Log-Info "Repositori Web Absensi sudah ada, menarik pembaruan..."
-    Push-Location $AppDir
-    git pull origin main 2>$null
-    if ($LASTEXITCODE -ne 0) { git pull origin master }
-    Pop-Location
+Log-Step "[6/9] Men-deploy Aplikasi Web Absensi Multi-Tenant (Release ZIP & Laravel)..."
+$webReleaseUrl = "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+$webReleaseZip = Join-Path $env:TEMP "absen_release_client.zip"
+
+$envBackup = Join-Path $env:TEMP "absen_env_backup"
+$licCacheBackup = Join-Path $env:TEMP "absen_lic_cache_backup.json"
+Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $licCacheBackup -Force -ErrorAction SilentlyContinue
+
+if (Test-Path (Join-Path $AppDir ".env")) {
+    Copy-Item (Join-Path $AppDir ".env") $envBackup -Force
+}
+if (Test-Path (Join-Path $AppDir "storage\app\license_cache.json")) {
+    Copy-Item (Join-Path $AppDir "storage\app\license_cache.json") $licCacheBackup -Force
+}
+
+Log-Info "Mengunduh paket rilis resmi Web Absensi (release-client.zip)..."
+Download-FileWithProgress $webReleaseUrl $webReleaseZip "Web Absensi (Release Client ZIP)"
+
+if (-not (Test-Path $AppDir)) { New-Item -ItemType Directory -Path $AppDir -Force | Out-Null }
+if (Test-Path (Join-Path $AppDir ".git")) {
+    Remove-Item -Path (Join-Path $AppDir ".git") -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Log-Info "Mengekstrak paket rilis Web Absensi ke $AppDir..."
+Expand-Archive -Path $webReleaseZip -DestinationPath $AppDir -Force
+Remove-Item -Path $webReleaseZip -Force -ErrorAction SilentlyContinue
+
+if (Test-Path $envBackup) {
+    Copy-Item $envBackup (Join-Path $AppDir ".env") -Force
+    Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $licCacheBackup) {
+    $storageAppDir = Join-Path $AppDir "storage\app"
+    if (-not (Test-Path $storageAppDir)) { New-Item -ItemType Directory -Path $storageAppDir -Force | Out-Null }
+    Copy-Item $licCacheBackup (Join-Path $storageAppDir "license_cache.json") -Force
+    Remove-Item -Path $licCacheBackup -Force -ErrorAction SilentlyContinue
 }
 
 # Setup .env file
@@ -746,19 +772,18 @@ try {
         }
     }
 
-    Log-Info "Menghasilkan APP_KEY, migrasi database, seeding data awal, dan rehash lisensi..."
-    & $PhpExe -c "$currentIni" artisan key:generate --force
+    Log-Info "Menghasilkan APP_KEY, migrasi database, dan seeding data awal..."
+    $curEnvText = Get-Content -Path $envFile -Raw -ErrorAction SilentlyContinue
+    if ($curEnvText -notmatch "(?m)^APP_KEY=base64:.+") {
+        & $PhpExe -c "$currentIni" artisan key:generate --force
+    }
     & $PhpExe -c "$currentIni" artisan migrate --force
     & $PhpExe -c "$currentIni" artisan db:seed --force
-    & $PhpExe -c "$currentIni" artisan license:rehash --force 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        & $PhpExe -c "$currentIni" artisan license:rehash 2>$null
-    }
     & $PhpExe -c "$currentIni" artisan storage:link --force
     & $PhpExe -c "$currentIni" artisan optimize:clear
     & $PhpExe -c "$currentIni" artisan optimize
     if (-not [string]::IsNullOrWhiteSpace($LicenseKey)) {
-        Log-Info "Memvalidasi lisensi ke server provider..."
+        Log-Info "Memvalidasi lisensi Ed25519 ke server provider..."
         & $PhpExe -c "$currentIni" artisan license:validate --force 2>$null
     }
     Log-Success "Web Absensi berhasil di-deploy dan teroptimasi."

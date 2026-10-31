@@ -29,15 +29,30 @@ case "$1" in
         echo -e "${CYAN}${BOLD}=== PERBAIKAN & VALIDASI LISENSI JAGAT TECH ===${NC}"
         if [ -d "$APP_DIR" ]; then
             cd "$APP_DIR" || exit 1
-            echo -e "${YELLOW}  • Meng-generate ulang hash integritas sistem (license:rehash)...${NC}"
-            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
+
+            # Jika file integritas terhapus/rusak, pulihkan dari release-client.zip terbaru
+            if [ ! -f "$APP_DIR/storage/app/license_integrity.json" ]; then
+                echo -e "${YELLOW}  • File integritas tidak ditemukan, memulihkan dari paket rilis resmi...${NC}"
+                tmp_zip="/tmp/release-client-lic.zip"
+                tmp_ext="/tmp/release_lic_extract"
+                rm -rf "$tmp_zip" "$tmp_ext" && mkdir -p "$tmp_ext"
+                if curl -sSL -f "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip" -o "$tmp_zip" && unzip -q -o "$tmp_zip" -d "$tmp_ext"; then
+                    src_dir="$tmp_ext/release-client"
+                    [ ! -d "$src_dir" ] && src_dir="$tmp_ext"
+                    cp -f "$src_dir/storage/app/license_integrity.json" "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
+                    cp -f "$src_dir/app/Services/LicenseService.php" "$APP_DIR/app/Services/LicenseService.php" 2>/dev/null || true
+                    cp -f "$src_dir/app/Http/Middleware/CheckLicense.php" "$APP_DIR/app/Http/Middleware/CheckLicense.php" 2>/dev/null || true
+                    cp -f "$src_dir/app/Http/Middleware/SelfHostedGuard.php" "$APP_DIR/app/Http/Middleware/SelfHostedGuard.php" 2>/dev/null || true
+                fi
+                rm -rf "$tmp_zip" "$tmp_ext"
+            fi
 
             echo -e "${YELLOW}  • Mengatur ulang kepemilikan storage/ dan cache ke www-data...${NC}"
             chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
             chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
             [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
 
-            echo -e "${YELLOW}  • Memvalidasi lisensi ke server provider (user www-data)...${NC}"
+            echo -e "${YELLOW}  • Memvalidasi lisensi Ed25519 ke server provider (user www-data)...${NC}"
             su -s /bin/bash -c "cd '$APP_DIR' && php artisan license:validate --force" www-data 2>/dev/null || true
             [ -f "$APP_DIR/storage/app/license_cache.json" ] && chmod 666 "$APP_DIR/storage/app/license_cache.json" 2>/dev/null || true
 
@@ -50,20 +65,44 @@ case "$1" in
     update)
         echo -e "${CYAN}${BOLD}=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH ===${NC}"
         
-        # 1. Update Web Absensi
+        # 1. Update Web Absensi dari Release ZIP Resmi (release-client.zip)
         if [ -d "$APP_DIR" ]; then
-            echo -e "${YELLOW}▶ [1/3] Menarik commit terbaru Web Absen (git pull)...${NC}"
+            echo -e "${YELLOW}▶ [1/3] Mengunduh paket rilis terbaru Web Absen (release-client.zip)...${NC}"
             cd "$APP_DIR" || exit 1
-            git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
-            git pull origin main || git pull origin master
+            web_zip_url="https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+            tmp_web_zip="/tmp/release-client.zip"
+            tmp_web_ext="/tmp/release_web_extract"
+            rm -rf "$tmp_web_zip" "$tmp_web_ext"
+            mkdir -p "$tmp_web_ext"
+
+            if curl -sSL -f "$web_zip_url" -o "$tmp_web_zip" && unzip -q -o "$tmp_web_zip" -d "$tmp_web_ext"; then
+                src_dir="$tmp_web_ext/release-client"
+                [ ! -d "$src_dir" ] && src_dir="$tmp_web_ext"
+
+                # Backup sementara konfigurasi .env dan cache lisensi lokal client
+                [ -f "$APP_DIR/.env" ] && cp -f "$APP_DIR/.env" "/tmp/jagat_env.bak"
+                [ -f "$APP_DIR/storage/app/license_cache.json" ] && cp -f "$APP_DIR/storage/app/license_cache.json" "/tmp/jagat_lic_cache.bak"
+
+                echo -e "${YELLOW}  • Menyalin file rilis terbaru (termasuk signed license_integrity.json)...${NC}"
+                cp -rf "$src_dir/." "$APP_DIR/"
+                rm -rf "$APP_DIR/.git" 2>/dev/null || true
+
+                # Kembalikan .env dan cache lisensi lokal client
+                [ -f "/tmp/jagat_env.bak" ] && mv -f "/tmp/jagat_env.bak" "$APP_DIR/.env"
+                [ -f "/tmp/jagat_lic_cache.bak" ] && mv -f "/tmp/jagat_lic_cache.bak" "$APP_DIR/storage/app/license_cache.json"
+                rm -rf "$tmp_web_zip" "$tmp_web_ext"
+                echo -e "${GREEN}  ✔ Paket rilis Web Absen berhasil diperbarui!${NC}"
+            else
+                echo -e "${RED}  ✗ Gagal mengunduh release-client.zip dari GitHub Releases.${NC}"
+                rm -rf "$tmp_web_zip" "$tmp_web_ext"
+            fi
 
             echo -e "${YELLOW}  • Memperbarui dependensi PHP (composer install)...${NC}"
             export COMPOSER_ALLOW_SUPERUSER=1
             composer install --no-dev --optimize-autoloader --no-interaction
 
-            echo -e "${YELLOW}  • Menjalankan migrasi database & rehash lisensi...${NC}"
+            echo -e "${YELLOW}  • Menjalankan migrasi database...${NC}"
             php artisan migrate --force
-            php artisan license:rehash --force 2>/dev/null || php artisan license:rehash 2>/dev/null || true
 
             echo -e "${YELLOW}  • Membersihkan & mengoptimalkan cache Laravel...${NC}"
             php artisan storage:link --force 2>/dev/null || true
@@ -71,7 +110,7 @@ case "$1" in
             php artisan optimize
 
             echo -e "${YELLOW}  • Memastikan hak akses direktori & cache milik www-data...${NC}"
-            chown -R www-data:www-data "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
+            chown -R www-data:www-data "$APP_DIR"
             chmod -R 775 "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
             [ -f "$APP_DIR/storage/app/license_integrity.json" ] && chmod 664 "$APP_DIR/storage/app/license_integrity.json" 2>/dev/null || true
 

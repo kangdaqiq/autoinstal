@@ -249,18 +249,40 @@ switch ($Command.ToLower()) {
 
     "license" {
         Show-Header
-        Write-Color "`n=== SINKRONISASI & PERBAIKAN LISENSI JAGAT TECH (WINDOWS) ===" Cyan
+        Write-Color "`n=== SINKRONISASI & VALIDASI LISENSI JAGAT TECH (WINDOWS) ===" Cyan
         if (Test-Path $WebDir) {
             Push-Location $WebDir
             try {
-                Write-Color "  • Menjalankan rehash integritas lisensi (license:rehash)..." Yellow
-                & $PhpExe -c "$activePhpDir\php.ini" artisan license:rehash --force 2>$null
-                if ($LASTEXITCODE -ne 0) {
-                    & $PhpExe -c "$activePhpDir\php.ini" artisan license:rehash 2>$null
+                if (-not (Test-Path (Join-Path $WebDir "storage\app\license_integrity.json"))) {
+                    Write-Color "  - File integritas lisensi tidak ditemukan, memulihkan dari paket rilis resmi..." Yellow
+                    $relUrl = "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+                    $relZip = Join-Path $env:TEMP "absen_license_restore.zip"
+                    $relExt = Join-Path $env:TEMP "absen_license_restore_ext"
+                    Remove-Item -Path $relZip -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $relExt -Recurse -Force -ErrorAction SilentlyContinue
+                    Invoke-WebRequest -Uri $relUrl -OutFile $relZip -UseBasicParsing -TimeoutSec 120
+                    Expand-Archive -Path $relZip -DestinationPath $relExt -Force
+                    $restFiles = @(
+                        "storage\app\license_integrity.json",
+                        "app\Services\LicenseService.php",
+                        "app\Http\Middleware\CheckLicense.php",
+                        "app\Http\Middleware\SelfHostedGuard.php"
+                    )
+                    foreach ($rf in $restFiles) {
+                        $srcRf = Join-Path $relExt $rf
+                        $dstRf = Join-Path $WebDir $rf
+                        if (Test-Path $srcRf) {
+                            $dstDir = Split-Path -Path $dstRf
+                            if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+                            Copy-Item $srcRf $dstRf -Force
+                        }
+                    }
+                    Remove-Item -Path $relZip -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $relExt -Recurse -Force -ErrorAction SilentlyContinue
                 }
-                Write-Color "  • Memvalidasi lisensi ke server provider..." Yellow
-                & $PhpExe -c "$activePhpDir\php.ini" artisan license:validate --force
-                Write-Color "✔ Sinkronisasi lisensi selesai!" Green
+                Write-Color "  - Memvalidasi lisensi Ed25519 ke server provider..." Yellow
+                & $PhpBin artisan license:validate --force
+                Write-Color "[OK] Sinkronisasi lisensi selesai!" Green
             } catch {
                 Write-Color "Gagal validasi lisensi: $($_.Exception.Message)" Red
             } finally {
@@ -274,28 +296,59 @@ switch ($Command.ToLower()) {
         Show-Header
         Write-Color "`n=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH (WINDOWS) ===" Yellow
 
-        # 1. Update Web Absensi
+        # 1. Update Web Absensi (GitHub Release ZIP)
         if (Test-Path $WebDir) {
-            Write-Color "`n[1/3] Menarik commit terbaru Web Absensi (git pull)..." Cyan
+            Write-Color "`n[1/3] Mengunduh rilis terbaru Web Absensi (release-client.zip)..." Cyan
             Push-Location $WebDir
             try {
-                git pull origin main 2>$null
-                if ($LASTEXITCODE -ne 0) { git pull origin master }
+                $webRelUrl = "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+                $webRelZip = Join-Path $env:TEMP "absen_update_client.zip"
+                $envBackup = Join-Path $env:TEMP "absen_env_update_backup"
+                $licBackup = Join-Path $env:TEMP "absen_lic_update_backup.json"
+
+                Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
+
+                if (Test-Path (Join-Path $WebDir ".env")) {
+                    Copy-Item (Join-Path $WebDir ".env") $envBackup -Force
+                }
+                if (Test-Path (Join-Path $WebDir "storage\app\license_cache.json")) {
+                    Copy-Item (Join-Path $WebDir "storage\app\license_cache.json") $licBackup -Force
+                }
+
+                Invoke-WebRequest -Uri $webRelUrl -OutFile $webRelZip -UseBasicParsing -TimeoutSec 300
+                if (Test-Path $webRelZip) {
+                    Write-Color "  - Mengekstrak paket rilis Web Absensi..." Yellow
+                    if (Test-Path (Join-Path $WebDir ".git")) {
+                        Remove-Item -Path (Join-Path $WebDir ".git") -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                    Expand-Archive -Path $webRelZip -DestinationPath $WebDir -Force
+                    Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
+                }
+
+                if (Test-Path $envBackup) {
+                    Copy-Item $envBackup (Join-Path $WebDir ".env") -Force
+                    Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
+                }
+                if (Test-Path $licBackup) {
+                    $stApp = Join-Path $WebDir "storage\app"
+                    if (-not (Test-Path $stApp)) { New-Item -ItemType Directory -Path $stApp -Force | Out-Null }
+                    Copy-Item $licBackup (Join-Path $stApp "license_cache.json") -Force
+                    Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
+                }
                 
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
                 composer install --no-dev --optimize-autoloader --no-interaction
                 
-                Write-Color "  - Menjalankan migrasi database & rehash lisensi..." Yellow
+                Write-Color "  - Menjalankan migrasi database..." Yellow
                 & $PhpBin artisan migrate --force
-                & $PhpBin artisan license:rehash --force 2>$null
-                if ($LASTEXITCODE -ne 0) {
-                    & $PhpBin artisan license:rehash 2>$null
-                }
                 
                 Write-Color "  - Membersihkan dan mengoptimalkan cache Laravel..." Yellow
                 & $PhpBin artisan storage:link --force
                 & $PhpBin artisan optimize:clear
                 & $PhpBin artisan optimize
+                & $PhpBin artisan license:validate --force 2>$null
 
                 Write-Color "  - Me-restart antrian background (queue worker & scheduler)..." Yellow
                 Restart-Service -Name "Jagat-Queue" -ErrorAction SilentlyContinue
