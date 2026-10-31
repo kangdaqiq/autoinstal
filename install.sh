@@ -313,28 +313,65 @@ detect_system() {
     fi
 }
 
-# --- Cek RAM & Setup Swap Otomatis ---
+# --- Cek RAM, Disk & Setup Swap Otomatis ---
 check_ram_and_swap() {
-    log_step "Memeriksa Kapasitas Memori (RAM & Swap)..."
+    log_step "Memeriksa Kapasitas Memori (RAM, Swap & Penyimpanan)..."
+
+    # Bersihkan file sementara & swapfile gagal/tidak aktif dari percobaan sebelumnya
+    rm -rf /tmp/*.zip /tmp/*.tar.gz /tmp/*_extract 2>/dev/null || true
+    if [ -f /swapfile ] && ! grep -q '/swapfile' /proc/swaps 2>/dev/null; then
+        if ! swapon /swapfile >> "${LOG_FILE}" 2>&1; then
+            log_warn "Menghapus file /swapfile korup/belum selesai dari percobaan sebelumnya..."
+            rm -f /swapfile 2>/dev/null || true
+        fi
+    fi
+
     TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
     TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+    FREE_DISK_MB=$(df -Pk / | awk 'NR==2 {print int($4 / 1024)}')
+
+    # Jika ruang disk di bawah 2500 MB, bersihkan cache APT terlebih dahulu
+    if [ "${FREE_DISK_MB:-0}" -lt 2500 ]; then
+        apt-get clean >/dev/null 2>&1 || true
+        FREE_DISK_MB=$(df -Pk / | awk 'NR==2 {print int($4 / 1024)}')
+    fi
 
     log_info "Total RAM  : ${C_BOLD}${TOTAL_RAM} MB${C_RESET}"
     log_info "Total Swap : ${C_BOLD}${TOTAL_SWAP} MB${C_RESET}"
+    log_info "Sisa Disk  : ${C_BOLD}${FREE_DISK_MB} MB${C_RESET} (Partisi /)"
 
-    if [ "$TOTAL_RAM" -lt 1800 ] && [ "$TOTAL_SWAP" -lt 1024 ]; then
-        log_warn "RAM perangkat di bawah 2GB. Menyiapkan Swap File 2GB otomatis agar proses Composer & Git tidak kehabisan memori..."
+    if [ "$TOTAL_RAM" -lt 1800 ] && [ "$TOTAL_SWAP" -lt 512 ]; then
         if [ ! -f /swapfile ]; then
-            fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 >> "${LOG_FILE}" 2>&1
-            chmod 600 /swapfile
-            mkswap /swapfile >> "${LOG_FILE}" 2>&1
-            swapon /swapfile >> "${LOG_FILE}" 2>&1
-            if ! grep -q '/swapfile' /etc/fstab; then
-                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+            # Tentukan ukuran swap yang aman dengan menyisakan minimal ~1.8 GB ruang untuk instalasi paket & aplikasi
+            local swap_mb=0
+            if [ "${FREE_DISK_MB:-0}" -ge 4200 ]; then
+                swap_mb=2048
+            elif [ "${FREE_DISK_MB:-0}" -ge 3000 ]; then
+                swap_mb=1024
+            elif [ "${FREE_DISK_MB:-0}" -ge 2300 ]; then
+                swap_mb=512
             fi
-            sysctl -w vm.swappiness=10 >> "${LOG_FILE}" 2>&1 || true
-            echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
-            log_success "Swap 2GB berhasil diaktifkan (eMMC Safe: swappiness=10)!"
+
+            if [ "$swap_mb" -gt 0 ]; then
+                log_warn "RAM perangkat di bawah 2GB. Menyiapkan Swap File ${swap_mb}MB otomatis (menyesuaikan sisa ruang penyimpanan)..."
+                if (fallocate -l "${swap_mb}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="${swap_mb}" >> "${LOG_FILE}" 2>&1) && \
+                   chmod 600 /swapfile && \
+                   mkswap /swapfile >> "${LOG_FILE}" 2>&1 && \
+                   swapon /swapfile >> "${LOG_FILE}" 2>&1; then
+                    if ! grep -q '/swapfile' /etc/fstab; then
+                        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+                    fi
+                    sysctl -w vm.swappiness=10 >> "${LOG_FILE}" 2>&1 || true
+                    echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
+                    log_success "Swap ${swap_mb}MB berhasil diaktifkan (eMMC Safe: swappiness=10)!"
+                else
+                    log_warn "Gagal mengalokasikan /swapfile (ruang penyimpanan terbatas). Membersihkan sisa file & melanjutkan tanpa swapfile..."
+                    swapoff /swapfile 2>/dev/null || true
+                    rm -f /swapfile 2>/dev/null || true
+                fi
+            else
+                log_warn "Sisa penyimpanan (${FREE_DISK_MB} MB) diprioritaskan untuk instalasi paket sistem & aplikasi. Melanjutkan tanpa membuat /swapfile baru."
+            fi
         fi
     else
         log_success "Kapasitas memori mencukupi."
@@ -572,11 +609,18 @@ install_composer_and_go() {
     fi
     log_success "Composer 2 terpasang di /usr/local/bin/composer."
 
-    # Golang — Install otomatis versi terbaru dari golang.org
+    # Bersihkan cache APT agar hemat ruang penyimpanan eMMC
+    apt-get clean >/dev/null 2>&1 || true
+
+    # Golang — Install otomatis jika ruang disk mencukupi (Bot sudah menggunakan pre-compiled binary)
+    local free_for_go
+    free_for_go=$(df -Pk / | awk 'NR==2 {print int($4 / 1024)}')
     if command -v /usr/local/go/bin/go &> /dev/null; then
         local current_go
         current_go=$(/usr/local/go/bin/go version 2>/dev/null | awk '{print $3}')
         log_success "Golang Engine (${current_go}) sudah terinstall, melewati instalasi ulang."
+    elif [ "${free_for_go:-0}" -lt 1500 ]; then
+        log_warn "Sisa penyimpanan terbatas (${free_for_go} MB). Melewati instalasi compiler Go (~500MB) karena Bot WA & Telegram sudah menggunakan pre-compiled binary."
     else
         log_info "Golang belum terinstall. Mengunduh versi terbaru dari golang.org..."
 
@@ -1445,19 +1489,31 @@ case "$1" in
         fi
         ;;
     swap-create|swap-on)
-        echo -e "${YELLOW}Membuat kembali Swap File 2GB (Aman untuk eMMC)...${NC}"
+        free_mb=$(df -Pk / | awk 'NR==2 {print int($4 / 1024)}')
+        swap_size_mb=2048
+        if [ "${free_mb:-0}" -lt 2500 ] && [ "${free_mb:-0}" -ge 1500 ]; then
+            swap_size_mb=1024
+        elif [ "${free_mb:-0}" -lt 1500 ]; then
+            echo -e "${RED}✖ Sisa ruang penyimpanan tidak mencukupi (${free_mb} MB tersedia). Butuh minimal 1.5 GB ruang kosong.${NC}"
+            df -h /
+            exit 1
+        fi
+        echo -e "${YELLOW}Membuat kembali Swap File ${swap_size_mb}MB (Aman untuk eMMC)...${NC}"
         if [ ! -f /swapfile ]; then
-            fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
-            chmod 600 /swapfile
-            mkswap /swapfile
-            swapon /swapfile
-            if ! grep -q '/swapfile' /etc/fstab; then
-                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+            if (fallocate -l "${swap_size_mb}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="${swap_size_mb}") && \
+               chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile; then
+                if ! grep -q '/swapfile' /etc/fstab; then
+                    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+                fi
+                sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+                echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
+                echo -e "${GREEN}${BOLD}✔ Swapfile ${swap_size_mb}MB berhasil dibuat dan diaktifkan (swappiness=10)!${NC}"
+                free -h
+            else
+                rm -f /swapfile 2>/dev/null || true
+                echo -e "${RED}✖ Gagal membuat /swapfile (ruang penyimpanan tidak cukup).${NC}"
+                exit 1
             fi
-            sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
-            echo 'vm.swappiness=10' > /etc/sysctl.d/99-jagat-swap.conf 2>/dev/null || true
-            echo -e "${GREEN}${BOLD}✔ Swapfile 2GB berhasil dibuat dan diaktifkan (swappiness=10)!${NC}"
-            free -h
         else
             swapon /swapfile 2>/dev/null || true
             echo -e "${GREEN}Swapfile sudah ada dan aktif.${NC}"

@@ -4,6 +4,11 @@
 # ==============================================================================
 set -e
 
+# Bersihkan /swapfile korup/tidak aktif jika ruang penyimpanan penuh dari instalasi sebelumnya
+if [ -f /swapfile ] && ! grep -q '/swapfile' /proc/swaps 2>/dev/null; then
+    rm -f /swapfile 2>/dev/null || true
+fi
+
 TMP_DIR=$(mktemp -d)
 CACHE_BUSTER=$(date +%s)
 INSTALLER_URL="https://raw.githubusercontent.com/kangdaqiq/autoinstal/main/install.sh?v=${CACHE_BUSTER}"
