@@ -108,10 +108,8 @@ run_task() {
     # Kembalikan kursor
     [ -t 1 ] && tput cnorm 2>/dev/null || true
 
-    set +e
-    wait "$pid"
-    local exit_code=$?
-    set -e
+    local exit_code=0
+    wait "$pid" || exit_code=$?
 
     if [ $exit_code -eq 0 ]; then
         if [ -t 1 ]; then
@@ -440,11 +438,57 @@ collect_inputs() {
     esac
 }
 
+# --- Helper Override Systemd (Kompatibilitas Kernel Armbian STB / Debian 13 Type=notify) ---
+configure_systemd_overrides() {
+    local php_ver="${PHP_DEFAULT_VER:-8.3}"
+    mkdir -p /run/php /run/mysqld \
+             "/etc/systemd/system/php${php_ver}-fpm.service.d" \
+             "/etc/systemd/system/mariadb.service.d" \
+             "/etc/systemd/system/mysql.service.d" 2>/dev/null || true
+    chmod 755 /run/php /run/mysqld 2>/dev/null || true
+
+    # Override PHP-FPM: gunakan Type=simple agar tidak hang/killed SIGTERM akibat sd_notify/pidfd di kernel STB Armbian
+    cat << EOF > "/etc/systemd/system/php${php_ver}-fpm.service.d/override.conf"
+[Service]
+Type=simple
+RuntimeDirectory=php
+RuntimeDirectoryMode=0755
+ProtectSystem=off
+PrivateDevices=false
+PrivateTmp=false
+ProtectHome=false
+ExecStartPost=
+ExecStartPost=-/usr/lib/php/php-fpm-socket-helper install /run/php/php-fpm.sock /etc/php/${php_ver}/fpm/pool.d/www.conf 83
+ExecStartPost=/bin/sh -c 'for i in \$(seq 1 30); do [ -S /run/php/php${php_ver}-fpm.sock ] && break; sleep 0.5; done'
+EOF
+
+    # Override MariaDB: gunakan Type=simple & matikan namespace pembatas yang kerap gagal di kernel custom STB
+    for db_svc in mariadb mysql; do
+        cat << 'EOF' > "/etc/systemd/system/${db_svc}.service.d/override.conf"
+[Service]
+Type=simple
+RuntimeDirectory=mysqld
+RuntimeDirectoryMode=0755
+ProtectSystem=off
+PrivateDevices=false
+PrivateTmp=false
+ProtectHome=false
+ExecStartPost=
+ExecStartPost=/bin/sh -c 'for i in $(seq 1 40); do [ -S /run/mysqld/mysqld.sock ] && break; sleep 0.5; done'
+EOF
+    done
+
+    systemctl daemon-reload 2>/dev/null || true
+}
+
 # --- 1. Base Tools & Dependencies ---
 install_base_tools() {
     log_step "[1/11] Memperbarui Repository APT & Menginstal Utilitas Dasar..."
     export DEBIAN_FRONTEND=noninteractive
-    
+
+    # Pasang override systemd sebelum dpkg --configure -a agar paket php-fpm/mariadb yang sempat tertunda langsung pulih
+    configure_systemd_overrides
+
     # Pulihkan dpkg jika ada proses interupsi sebelumnya
     dpkg --configure -a >> "${LOG_FILE}" 2>&1 || true
 
@@ -514,7 +558,11 @@ install_php() {
 
     run_task "Sinkronisasi repository PHP Sury" "apt-get update -y"
 
-    run_task "Memasang paket PHP ${php_ver} FPM, CLI & ekstensi lengkap" "apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' php${php_ver}-fpm php${php_ver}-cli php${php_ver}-common php${php_ver}-mysql php${php_ver}-mbstring php${php_ver}-bcmath php${php_ver}-gd php${php_ver}-zip php${php_ver}-intl php${php_ver}-xml php${php_ver}-curl php${php_ver}-opcache php${php_ver}-readline php${php_ver}-sqlite3"
+    # Pastikan systemd override Type=simple aktif sebelum instalasi PHP-FPM
+    configure_systemd_overrides
+
+    run_task "Memasang paket PHP ${php_ver} FPM, CLI & ekstensi lengkap" "dpkg --configure -a && apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' php${php_ver}-fpm php${php_ver}-cli php${php_ver}-common php${php_ver}-mysql php${php_ver}-mbstring php${php_ver}-bcmath php${php_ver}-gd php${php_ver}-zip php${php_ver}-intl php${php_ver}-xml php${php_ver}-curl php${php_ver}-opcache php${php_ver}-readline php${php_ver}-sqlite3"
+    apt-get clean >/dev/null 2>&1 || true
 
     local fpm_ini="/etc/php/${php_ver}/fpm/php.ini"
     local cli_ini="/etc/php/${php_ver}/cli/php.ini"
@@ -544,7 +592,7 @@ install_php() {
         sed -i 's/^;pm.max_requests = .*/pm.max_requests = 200/' "$fpm_pool"
     fi
 
-    run_task "Memulai ulang service PHP ${php_ver} FPM" "systemctl restart php${php_ver}-fpm && systemctl enable php${php_ver}-fpm"
+    run_task "Memulai ulang service PHP ${php_ver} FPM" "mkdir -p /run/php && systemctl daemon-reload && systemctl enable php${php_ver}-fpm && systemctl restart php${php_ver}-fpm"
 
     local installed_php
     installed_php=$(php -v | head -n1 | awk '{print $2}')
@@ -556,7 +604,10 @@ install_database() {
     log_step "[4/11] Menginstal & Menyiapkan Database MariaDB..."
     export DEBIAN_FRONTEND=noninteractive
 
+    configure_systemd_overrides
+
     run_task "Mengunduh & memasang MariaDB Server" "apt-get install -y mariadb-server mariadb-client || apt-get install -y default-mysql-server default-mysql-client"
+    apt-get clean >/dev/null 2>&1 || true
 
     # Tuning khusus S905X (ramah flash storage & hemat RAM)
     if [ "$IS_AMLOGIC_S905X" = true ]; then
@@ -575,7 +626,7 @@ table_open_cache = 400
 EOF
     fi
 
-    run_task "Memulai ulang & menyalakan daemon MariaDB" "systemctl enable mariadb >> ${LOG_FILE} 2>&1 || systemctl enable mysql >> ${LOG_FILE} 2>&1; systemctl restart mariadb >> ${LOG_FILE} 2>&1 || systemctl restart mysql >> ${LOG_FILE} 2>&1"
+    run_task "Memulai ulang & menyalakan daemon MariaDB" "mkdir -p /run/mysqld && chown mysql:mysql /run/mysqld 2>/dev/null || true; systemctl daemon-reload; systemctl enable mariadb >> ${LOG_FILE} 2>&1 || systemctl enable mysql >> ${LOG_FILE} 2>&1; systemctl restart mariadb >> ${LOG_FILE} 2>&1 || systemctl restart mysql >> ${LOG_FILE} 2>&1"
 
     # Siapkan file query SQL sementara yang bersih dan aman dari escaping / eval issues
     local sql_tmp="/tmp/jagat_db_setup.sql"
@@ -591,7 +642,7 @@ FLUSH PRIVILEGES;
 EOF
     chmod 600 "${sql_tmp}"
 
-    run_task "Mengonfigurasi database '${DB_NAME}' & pengguna '${DB_USER}'" "(mariadb -u root < '${sql_tmp}' || mysql -u root < '${sql_tmp}') && rm -f '${sql_tmp}'"
+    run_task "Mengonfigurasi database '${DB_NAME}' & pengguna '${DB_USER}'" "for i in \$(seq 1 15); do (mariadb -u root -e 'SELECT 1' >/dev/null 2>&1 || mysql -u root -e 'SELECT 1' >/dev/null 2>&1) && break; sleep 1; done && (mariadb -u root < '${sql_tmp}' || mysql -u root < '${sql_tmp}') && rm -f '${sql_tmp}'"
     rm -f "${sql_tmp}" 2>/dev/null || true
 
     log_success "Database '${DB_NAME}' dan pengguna '${DB_USER}' siap digunakan."
