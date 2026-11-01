@@ -263,7 +263,13 @@ case "$1" in
         else
             check_service "WhatsApp Gateway (GOWA)" "gowa"
         fi
-        check_service "WhatsApp Bot Go" "bot_wa.service" "(Port 5000)"
+
+        # Deteksi service WhatsApp Bot Go (bot_wa.service atau bot-go.service)
+        local_bot_wa="bot_wa.service"
+        if systemctl is-active --quiet "bot-go.service" 2>/dev/null || (! systemctl list-unit-files 2>/dev/null | grep -q "bot_wa.service" && systemctl list-unit-files 2>/dev/null | grep -q "bot-go.service"); then
+            local_bot_wa="bot-go.service"
+        fi
+        check_service "WhatsApp Bot Go" "$local_bot_wa" "(Port 5000)"
         check_service "Telegram Bot Go" "bot_tele.service"
 
         echo ""
@@ -277,16 +283,17 @@ case "$1" in
         fi
 
         if systemctl list-unit-files 2>/dev/null | grep -q "armbian-gpio.service"; then
-            check_service "Armbian GPIO Init" "armbian-gpio.service"
+            if systemctl is-active --quiet "armbian-gpio.service" 2>/dev/null; then
+                check_service "Armbian GPIO Init" "armbian-gpio.service" "(gpiochip1 73=0)"
+            else
+                printf "  ${YELLOW}○${NC} %-26s : ${YELLOW}Siap (Oneshot Boot Service)${NC}\n" "Armbian GPIO Init"
+            fi
         fi
 
         echo ""
         echo -e "${CYAN}${BOLD}======================================================${NC}"
-        local free_disk
         free_disk=$(df -h / 2>/dev/null | awk 'NR==2 {print $3 "/" $2 " (" $5 " terpakai)"}')
-        local free_ram
         free_ram=$(free -m 2>/dev/null | awk '/^Mem:/{print $3 " MB / " $2 " MB"}')
-        local free_swap
         free_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $3 " MB / " $2 " MB"}')
         echo -e "  • Sisa Disk (eMMC) : ${BOLD}${free_disk}${NC}"
         echo -e "  • Memori (RAM)     : ${BOLD}${free_ram}${NC}"
@@ -303,7 +310,14 @@ case "$1" in
             restart_service "Database MySQL" "mysql"
         fi
         restart_service "WhatsApp Gateway (GOWA)" "whatsapp.service"
-        restart_service "WhatsApp Bot Go" "bot_wa.service"
+
+        # Restart Bot WhatsApp Go (bot_wa.service atau bot-go.service)
+        local_bot_wa="bot_wa.service"
+        if systemctl is-active --quiet "bot-go.service" 2>/dev/null || (! systemctl list-unit-files 2>/dev/null | grep -q "bot_wa.service" && systemctl list-unit-files 2>/dev/null | grep -q "bot-go.service"); then
+            local_bot_wa="bot-go.service"
+        fi
+        restart_service "WhatsApp Bot Go" "$local_bot_wa"
+
         restart_service "Telegram Bot Go" "bot_tele.service"
         restart_service "Cron Scheduler" "cron"
         restart_service "Nginx Web Server" "nginx"
@@ -362,7 +376,7 @@ case "$1" in
                 ;;
             bot)
                 echo -e "${CYAN}Memantau Log WhatsApp Bot Go (Ctrl+C untuk keluar)...${NC}"
-                journalctl -u bot_wa.service -f -n 50
+                journalctl -u bot_wa.service -u bot-go.service -f -n 50
                 ;;
             queue)
                 echo -e "${CYAN}Memantau Log Queue Worker (Ctrl+C untuk keluar)...${NC}"
