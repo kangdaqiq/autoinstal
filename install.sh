@@ -63,6 +63,7 @@ DB_USER_DEFAULT="absen_user"
 DEFAULT_PASSWORD="JagatTech123@"
 
 WA_PORT="3000"
+WA_INTERNAL_PORT="3001"
 WA_USER="admin"
 WA_WEBHOOK_DEFAULT="http://127.0.0.1:5000/webhook"
 
@@ -897,7 +898,7 @@ install_gowa_whatsapp() {
     chmod +x "${WA_DIR}/whatsapp" 2>/dev/null || true
     chown -R ${WEB_USER}:${WEB_USER} "${WA_DIR}"
 
-    # 4. Buat Systemd Service (Berjalan langsung dari /var/www/whatsapp)
+    # 4. Buat Systemd Service (Berjalan langsung dari /var/www/whatsapp di port internal 3001, di-proxy oleh Nginx di port 3000)
     cat << EOF > /etc/systemd/system/whatsapp.service
 [Unit]
 Description=WhatsApp Gateway Multi-Device Service (JAGAT TECH)
@@ -907,7 +908,7 @@ After=network.target
 Type=simple
 User=${WEB_USER}
 WorkingDirectory=${WA_DIR}
-ExecStart=${WA_DIR}/whatsapp rest --port=${WA_PORT} --basic-auth=${WA_USER}:${WA_PASS},${WA_USER}:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=${WA_WEBHOOK_URL}
+ExecStart=${WA_DIR}/whatsapp rest --port=${WA_INTERNAL_PORT} --basic-auth=${WA_USER}:${WA_PASS},${WA_USER}:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=${WA_WEBHOOK_URL}
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
@@ -917,7 +918,7 @@ WantedBy=multi-user.target
 EOF
 
     run_task "Mengaktifkan & menyalakan daemon WhatsApp Gateway (whatsapp.service)" "systemctl daemon-reload && systemctl enable whatsapp.service && (systemctl restart whatsapp.service || true)"
-    log_success "Service WhatsApp Gateway (whatsapp.service) aktif di port ${WA_PORT}."
+    log_success "Service WhatsApp Gateway (whatsapp.service) aktif (Public Port: ${WA_PORT} -> Internal: ${WA_INTERNAL_PORT})."
 }
 
 # --- 8. Download & Setup WhatsApp Bot Go (Compiled Binary) ---
@@ -1144,14 +1145,17 @@ server {
 
     client_max_body_size 64M;
 
-    # WhatsApp Gateway Proxy
+    # WhatsApp Gateway Proxy (dengan Polyfill crypto.randomUUID untuk akses HTTP IP ZeroTier / LAN)
     location /wa-portal/ {
-        proxy_pass http://127.0.0.1:${WA_PORT}/;
+        proxy_pass http://127.0.0.1:${WA_INTERNAL_PORT}/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
+        proxy_set_header Accept-Encoding "";
         proxy_cache_bypass \$http_upgrade;
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script>if(typeof window!=="undefined"){if(!window.crypto){window.crypto={};}if(!window.crypto.randomUUID){window.crypto.randomUUID=function(){var d=new Uint8Array(1);return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,function(c){return(c^(window.crypto.getRandomValues?window.crypto.getRandomValues(d)[0]:Math.floor(Math.random()*256))&15>>c/4).toString(16)})};}}</script>';
     }
 
     location / {
@@ -1177,6 +1181,30 @@ server {
 
     access_log /var/log/nginx/absen_access.log;
     error_log /var/log/nginx/absen_error.log;
+}
+
+# WhatsApp Gateway Direct Port ${WA_PORT} Proxy (Injeksi Polyfill crypto.randomUUID agar jalan di HTTP IP ZeroTier / LAN)
+server {
+    listen ${WA_PORT};
+    listen [::]:${WA_PORT};
+    server_name _;
+
+    client_max_body_size 64M;
+
+    location / {
+        proxy_pass http://127.0.0.1:${WA_INTERNAL_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Accept-Encoding "";
+        proxy_buffering off;
+        proxy_cache_bypass \$http_upgrade;
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script>if(typeof window!=="undefined"){if(!window.crypto){window.crypto={};}if(!window.crypto.randomUUID){window.crypto.randomUUID=function(){var d=new Uint8Array(1);return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,function(c){return(c^(window.crypto.getRandomValues?window.crypto.getRandomValues(d)[0]:Math.floor(Math.random()*256))&15>>c/4).toString(16)})};}}</script>';
+    }
 }
 EOF
 
