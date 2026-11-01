@@ -15,12 +15,43 @@ BOLD="\033[1m"
 NC="\033[0m"
 
 check_service() {
-    local name="$1"
+    local label="$1"
     local svc="$2"
+    local note="$3"
+
     if systemctl is-active --quiet "$svc" 2>/dev/null; then
-        echo -e "${name} : ${GREEN}AKTIF (Running)${NC}"
+        local pid
+        pid=$(systemctl show -p MainPID --value "$svc" 2>/dev/null)
+        if [ -n "$pid" ] && [ "$pid" != "0" ]; then
+            printf "  ${GREEN}✔${NC} %-26s : ${GREEN}AKTIF (Running - PID %s)${NC} %s\n" "$label" "$pid" "${note}"
+        else
+            printf "  ${GREEN}✔${NC} %-26s : ${GREEN}AKTIF (Running)${NC} %s\n" "$label" "${note}"
+        fi
+    elif systemctl is-enabled "$svc" &>/dev/null || systemctl status "$svc" &>/dev/null; then
+        printf "  ${RED}✖${NC} %-26s : ${RED}MATI (Stopped / Inactive)${NC}\n" "$label"
     else
-        echo -e "${name} : ${RED}MATI (Stopped / Inactive)${NC}"
+        printf "  ${YELLOW}-${NC} %-26s : ${YELLOW}Non-aktif / Tidak terpasang${NC}\n" "$label"
+    fi
+}
+
+restart_service() {
+    local label="$1"
+    local svc="$2"
+
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}"; then
+        if systemctl restart "$svc" 2>/dev/null; then
+            printf "  • %-36s ${GREEN}[OK]${NC}\n" "$label..."
+        else
+            printf "  • %-36s ${RED}[GAGAL]${NC}\n" "$label..."
+        fi
+    elif systemctl is-active --quiet "$svc" 2>/dev/null; then
+        if systemctl restart "$svc" 2>/dev/null; then
+            printf "  • %-36s ${GREEN}[OK]${NC}\n" "$label..."
+        else
+            printf "  • %-36s ${RED}[GAGAL]${NC}\n" "$label..."
+        fi
+    else
+        printf "  • %-36s ${YELLOW}[Dilewati - Tidak Terpasang]${NC}\n" "$label..."
     fi
 }
 
@@ -212,42 +243,91 @@ case "$1" in
         echo -e "\n${GREEN}${BOLD}✔ Update Berhasil! Web dan Bot (WA & Telegram) sudah menggunakan versi terbaru.${NC}\n"
         ;;
     status)
-        echo -e "${CYAN}=== Status Layanan Sistem Absensi JAGAT TECH ===${NC}"
-        check_service "Nginx Web Server  " "nginx"
-        check_service "PHP 8.3 FPM       " "php8.3-fpm"
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
+        echo -e "       ${BOLD}STATUS LAYANAN SISTEM ABSENSI JAGAT TECH${NC}        "
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
+        echo -e "${YELLOW}[ 1. Layanan Web & Core Engine ]${NC}"
+        check_service "Nginx Web Server" "nginx"
+        check_service "PHP 8.3 FPM Engine" "php8.3-fpm"
         if systemctl list-unit-files 2>/dev/null | grep -q "mariadb.service"; then
-            check_service "MariaDB Database  " "mariadb"
+            check_service "MariaDB Database" "mariadb"
         else
-            check_service "MySQL Database    " "mysql"
+            check_service "MySQL Database" "mysql"
         fi
-        if systemctl is-active --quiet whatsapp.service 2>/dev/null; then
-            check_service "WhatsApp Gateway  " "whatsapp.service"
-        else
-            check_service "WhatsApp Gateway  " "gowa"
-        fi
-        check_service "WhatsApp Bot Go   " "bot_wa.service"
-        check_service "Telegram Bot Go   " "bot_tele.service"
+        check_service "Cron Scheduler" "cron"
+
         echo ""
-        echo -e "${CYAN}=== Status Background Worker (Supervisor) ===${NC}"
-        supervisorctl status absen-queue:* 2>/dev/null || echo -e "${YELLOW}Supervisor tidak aktif atau belum ada proses.${NC}"
+        echo -e "${YELLOW}[ 2. Layanan WhatsApp & Telegram Bot ]${NC}"
+        if systemctl list-unit-files 2>/dev/null | grep -q "whatsapp.service"; then
+            check_service "WhatsApp Gateway (GOWA)" "whatsapp.service" "(Port 3000 -> 3001)"
+        else
+            check_service "WhatsApp Gateway (GOWA)" "gowa"
+        fi
+        check_service "WhatsApp Bot Go" "bot_wa.service" "(Port 5000)"
+        check_service "Telegram Bot Go" "bot_tele.service"
+
+        echo ""
+        echo -e "${YELLOW}[ 3. Background Queue & Hardware Service ]${NC}"
+        if systemctl is-active --quiet supervisor 2>/dev/null; then
+            check_service "Supervisor Daemon" "supervisor"
+            echo -e "  ${CYAN}• Status Antrian (Queue):${NC}"
+            supervisorctl status absen-queue:* 2>/dev/null | sed 's/^/    /' || echo -e "    ${YELLOW}Belum ada worker queue aktif.${NC}"
+        else
+            check_service "Supervisor Daemon" "supervisor"
+        fi
+
+        if systemctl list-unit-files 2>/dev/null | grep -q "armbian-gpio.service"; then
+            check_service "Armbian GPIO Init" "armbian-gpio.service"
+        fi
+
+        echo ""
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
+        local free_disk
+        free_disk=$(df -h / 2>/dev/null | awk 'NR==2 {print $3 "/" $2 " (" $5 " terpakai)"}')
+        local free_ram
+        free_ram=$(free -m 2>/dev/null | awk '/^Mem:/{print $3 " MB / " $2 " MB"}')
+        local free_swap
+        free_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $3 " MB / " $2 " MB"}')
+        echo -e "  • Sisa Disk (eMMC) : ${BOLD}${free_disk}${NC}"
+        echo -e "  • Memori (RAM)     : ${BOLD}${free_ram}${NC}"
+        echo -e "  • Swap File        : ${BOLD}${free_swap}${NC}"
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
         ;;
     restart)
-        echo -e "${YELLOW}Me-restart semua layanan...${NC}"
-        supervisorctl restart absen-queue:* 2>/dev/null || true
-        systemctl restart whatsapp.service 2>/dev/null || systemctl restart gowa 2>/dev/null || true
-        systemctl restart bot_wa.service 2>/dev/null || true
-        systemctl restart bot_tele.service 2>/dev/null || true
-        systemctl restart nginx 2>/dev/null || true
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
+        echo -e "       ${YELLOW}${BOLD}ME-RESTART SELURUH LAYANAN SISTEM ABSENSI${NC}        "
+        echo -e "${CYAN}${BOLD}======================================================${NC}"
+        if systemctl list-unit-files 2>/dev/null | grep -q "mariadb.service"; then
+            restart_service "Database MariaDB" "mariadb"
+        else
+            restart_service "Database MySQL" "mysql"
+        fi
+        restart_service "WhatsApp Gateway (GOWA)" "whatsapp.service"
+        restart_service "WhatsApp Bot Go" "bot_wa.service"
+        restart_service "Telegram Bot Go" "bot_tele.service"
+        restart_service "Cron Scheduler" "cron"
+        restart_service "Nginx Web Server" "nginx"
+
+        # Supervisor Queue Worker
+        if command -v supervisorctl &>/dev/null; then
+            if supervisorctl restart absen-queue:* 2>/dev/null; then
+                printf "  • %-36s ${GREEN}[OK]${NC}\n" "Supervisor Worker Queue..."
+            else
+                printf "  • %-36s ${YELLOW}[Dilewati / Tidak Ada Antrian]${NC}\n" "Supervisor Worker Queue..."
+            fi
+        fi
 
         # Khusus PHP-FPM: Jika dipanggil dari web, jalankan async agar koneksi HTTP tidak putus
         if [ "$JAGAT_WEB_INVOCATION" = "1" ] || [ -n "$HTTP_HOST" ] || [ -n "$SERVER_SOFTWARE" ]; then
             (sleep 2 && systemctl restart php8.3-fpm 2>/dev/null) >/dev/null 2>&1 &
-            echo -e "PHP 8.3 FPM        : ${GREEN}[OK (Dijadwalkan)]${NC}"
+            printf "  • %-36s ${GREEN}[OK (Dijadwalkan)]${NC}\n" "PHP 8.3 FPM Engine..."
         else
-            systemctl restart php8.3-fpm 2>/dev/null || true
-            echo -e "PHP 8.3 FPM        : ${GREEN}[OK]${NC}"
+            restart_service "PHP 8.3 FPM Engine" "php8.3-fpm"
         fi
-        echo -e "${GREEN}Semua service berhasil di-restart!${NC}"
+
+        echo -e "${CYAN}------------------------------------------------------${NC}"
+        echo -e "${GREEN}${BOLD}✔ Seluruh layanan sistem berhasil di-restart!${NC}"
+        echo -e "${CYAN}------------------------------------------------------${NC}"
         ;;
     backup)
         echo -e "${CYAN}=== MEMULAI BACKUP SISTEM (DATABASE & STORAGE) ===${NC}"
