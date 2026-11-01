@@ -90,14 +90,9 @@ function Test-PortFast([string]$hostname, [int]$port, [int]$timeoutMs = 800) {
 switch ($Command.ToLower()) {
     "status" {
         Show-Header
-        Write-Color "`n[ STATUS LAYANAN UTAMA ]" Cyan
+        Write-Color "`n[ 1. LAYANAN WEB & CORE ENGINE ]" Yellow
         Check-ServiceStatus "Web Server (Nginx)" "Jagat-Nginx"
         Check-ServiceStatus "PHP FastCGI (Port 9000)" "Jagat-PHP-CGI"
-        Check-ServiceStatus "Laravel Queue Worker" "Jagat-Queue"
-        Check-ServiceStatus "Laravel Scheduler" "Jagat-Scheduler"
-        Check-ServiceStatus "WhatsApp Gateway (GOWA)" "Jagat-WhatsApp"
-        Check-ServiceStatus "WhatsApp Bot Go (Port 5000)" "Jagat-BotWA"
-        Check-ServiceStatus "Telegram Bot Go" "Jagat-BotTele"
 
         # Cek Database
         Write-Host ("{0,-25} : " -f "Database MySQL/MariaDB") -NoNewline
@@ -106,6 +101,15 @@ switch ($Command.ToLower()) {
         } else {
             Write-Color "[ TIDAK DAPAT DIAKSES (Port 3306) ]" -color Red
         }
+
+        Write-Color "`n[ 2. LAYANAN WHATSAPP & TELEGRAM BOT ]" Yellow
+        Check-ServiceStatus "WhatsApp Gateway (GOWA)" "Jagat-WhatsApp"
+        Check-ServiceStatus "WhatsApp Bot Go (Port 5000)" "Jagat-BotWA"
+        Check-ServiceStatus "Telegram Bot Go" "Jagat-BotTele"
+
+        Write-Color "`n[ 3. BACKGROUND WORKER ]" Yellow
+        Check-ServiceStatus "Laravel Queue Worker" "Jagat-Queue"
+        Check-ServiceStatus "Laravel Scheduler" "Jagat-Scheduler"
 
         $nginxPort = "80"
         $nginxConf = Join-Path $ServerDir "bin\nginx\conf\nginx.conf"
@@ -117,8 +121,29 @@ switch ($Command.ToLower()) {
         }
         $webDisplay = if ($nginxPort -eq "80") { "http://localhost" } else { "http://localhost:$nginxPort" }
 
-        Write-Host ""
-        Write-Color "Alamat Akses:" Yellow
+        Write-Color "`n==============================================================" Cyan
+        try {
+            $driveLetter = (Split-Path -Path $ServerDir -Qualifier)
+            if (-not $driveLetter) { $driveLetter = "C:" }
+            $drive = Get-PSDrive ($driveLetter.TrimEnd(':')) -ErrorAction SilentlyContinue
+            if ($drive) {
+                $usedGb = [math]::Round(($drive.Used / 1GB), 2)
+                $freeGb = [math]::Round(($drive.Free / 1GB), 2)
+                $totalGb = [math]::Round((($drive.Used + $drive.Free) / 1GB), 2)
+                $pct = [math]::Round(($drive.Used / ($drive.Used + $drive.Free) * 100))
+                Write-Color ("  - Ruang Disk ({0}) : {1} GB / {2} GB ({3}% terpakai, Sisa: {4} GB)" -f $driveLetter, $usedGb, $totalGb, $pct, $freeGb) White
+            }
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+            if ($os) {
+                $totRam = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
+                $freeRam = [math]::Round($os.FreePhysicalMemory / 1024, 0)
+                $usedRam = $totRam - $freeRam
+                Write-Color ("  - Memori (RAM)      : {0} MB / {1} MB" -f $usedRam, $totRam) White
+            }
+        } catch {}
+        Write-Color "==============================================================" Cyan
+
+        Write-Color "`nAlamat Akses:" Yellow
         Write-Color "  - Web Absensi     : $webDisplay" White
         Write-Color "  - WhatsApp Portal : http://localhost:3000" White
         Write-Color "  - Bot Webhook     : http://127.0.0.1:5000/webhook" White
@@ -136,7 +161,7 @@ switch ($Command.ToLower()) {
                 if ((Test-Path $waExe) -and (Test-Path $nssm)) {
                     Write-Host "Mendaftarkan service Jagat-WhatsApp... " -NoNewline
                     & $nssm install Jagat-WhatsApp "$waExe" 2>$null | Out-Null
-                    & $nssm set Jagat-WhatsApp AppParameters "rest --port=3000 --basic-auth=admin:JagatTech123@,admin:jagattech --webhook=http://127.0.0.1:5000/webhook" 2>$null | Out-Null
+                    & $nssm set Jagat-WhatsApp AppParameters "rest --port=3001 --basic-auth=admin:JagatTech123@,admin:jagattech --webhook=http://127.0.0.1:5000/webhook" 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppDirectory (Split-Path $waExe) 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppStdout (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null
                     & $nssm set Jagat-WhatsApp AppStderr (Join-Path $ServerDir "logs\whatsapp\whatsapp.log") 2>$null | Out-Null

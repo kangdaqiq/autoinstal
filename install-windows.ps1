@@ -22,6 +22,7 @@ param(
     [string]$DbUser = "absen_user",
     [string]$DbPass = "JagatTech123@",
     [string]$WaPort = "3000",
+    [string]$WaInternalPort = "3001",
     [string]$WaUser = "admin",
     [string]$WaPass = "JagatTech123@",
     [switch]$NonInteractive
@@ -625,14 +626,17 @@ http {
         index index.php index.html;
         charset utf-8;
 
-        # WhatsApp Gateway Reverse Proxy
+        # WhatsApp Gateway Reverse Proxy (dengan Polyfill crypto.randomUUID untuk akses LAN/ZeroTier)
         location /wa-portal/ {
-            proxy_pass http://127.0.0.1:$WaPort/;
+            proxy_pass http://127.0.0.1:$WaInternalPort/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade `$http_upgrade;
             proxy_set_header Connection "upgrade";
             proxy_set_header Host `$host;
+            proxy_set_header Accept-Encoding "";
             proxy_cache_bypass `$http_upgrade;
+            sub_filter_once on;
+            sub_filter '<head>' '<head><script>if(typeof window!=="undefined"){if(!window.crypto){window.crypto={};}if(!window.crypto.randomUUID){window.crypto.randomUUID=function(){var d=new Uint8Array(1);return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,function(c){return(c^(window.crypto.getRandomValues?window.crypto.getRandomValues(d)[0]:Math.floor(Math.random()*256))&15>>c/4).toString(16)})};}}</script>';
         }
 
         location / {
@@ -654,6 +658,28 @@ http {
 
         location ~ /\.(?!well-known).* {
             deny all;
+        }
+    }
+
+    # WhatsApp Gateway Direct Port $WaPort Proxy (Injeksi Polyfill crypto.randomUUID untuk IP LAN / ZeroTier)
+    server {
+        listen $WaPort;
+        server_name _;
+        client_max_body_size 64M;
+
+        location / {
+            proxy_pass http://127.0.0.1:$WaInternalPort;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade `$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host `$host;
+            proxy_set_header X-Real-IP `$remote_addr;
+            proxy_set_header X-Forwarded-For `$proxy_add_x_forwarded_for;
+            proxy_set_header Accept-Encoding "";
+            proxy_buffering off;
+            proxy_cache_bypass `$http_upgrade;
+            sub_filter_once on;
+            sub_filter '<head>' '<head><script>if(typeof window!=="undefined"){if(!window.crypto){window.crypto={};}if(!window.crypto.randomUUID){window.crypto.randomUUID=function(){var d=new Uint8Array(1);return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,function(c){return(c^(window.crypto.getRandomValues?window.crypto.getRandomValues(d)[0]:Math.floor(Math.random()*256))&15>>c/4).toString(16)})};}}</script>';
         }
     }
 }
@@ -957,7 +983,7 @@ Install-NssmService "Jagat-Scheduler" $PhpExe "artisan schedule:work" $AppDir (J
 
 # 5. Jagat-WhatsApp Gateway
 if (Test-Path $WaExe) {
-    $waArgs = "rest --port=$WaPort --basic-auth=$WaUser`:$WaPass,$WaUser`:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=http://127.0.0.1:5000/webhook"
+    $waArgs = "rest --port=$WaInternalPort --basic-auth=$WaUser`:$WaPass,$WaUser`:jagattech,admin:jagattech,admin:JagatTech123@ --webhook=http://127.0.0.1:5000/webhook"
     Install-NssmService "Jagat-WhatsApp" $WaExe $waArgs $WaDir (Join-Path $LogsDir "whatsapp\whatsapp.log")
 }
 

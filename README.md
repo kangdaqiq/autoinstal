@@ -8,7 +8,7 @@ Auto Installer resmi dari **JAGAT TECH** untuk memasang seluruh kebutuhan server
 
 1. **Debian x86_64 (amd64):** PC Server, VPS Cloud (DigitalOcean, Linode, Niagahoster, AWS, dsb).
 2. **Armbian Amlogic S905X (arm64 / armhf):** STB B860H, Fiberhome HG680P, X96 Mini, TX3 Mini, dsb.
-3. **Microsoft Windows (x64):** Windows 10, Windows 11, dan Windows Server 2019/2022 (Native via PowerShell & Windows Services NSSM atau WSL2).
+3. **Microsoft Windows (x64):** Windows 10, Windows 11, dan Windows Server 2019/2022 (Native via PowerShell & Windows Services NSSM).
 
 ---
 
@@ -159,17 +159,6 @@ Metode ini berjalan langsung di Windows tanpa memerlukan fitur virtualisasi/Hype
    - Mendaftarkan Windows Background Services (`Jagat-Nginx`, `Jagat-PHP-CGI`, `Jagat-Queue`, `Jagat-WhatsApp`, `Jagat-BotWA`, `Jagat-BotTele`) sehingga otomatis aktif di latar belakang saat komputer dinyalakan.
    - Membuat shortcut di Desktop: *Web Absensi*, *WhatsApp Gateway Portal*, dan *Jagat Server Control*.
    - Mendaftarkan perintah CLI `absen` ke CMD / PowerShell sistem.
-
----
-
-### 🐧 Rekomendasi 2: WSL2 (Windows Subsystem for Linux - 100% Linux Parity)
-Metode ini direkomendasikan jika PC Windows Anda mendukung virtualisasi dan Anda ingin lingkungan produksi yang 100% identik dengan server Debian/Ubuntu Linux (Nginx socket, PHP-FPM, Supervisor, Systemd):
-
-1. **Klik Ganda (Double-Click)** file:
-   ```
-   install-wsl.bat
-   ```
-2. Skrip akan menyiapkan distro Ubuntu di WSL2, menjalankan installer Linux Jagat Tech di dalamnya, dan mengatur port-forwarding (port 80, 3000, 5000) ke Windows host.
 
 ---
 
