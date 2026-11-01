@@ -715,8 +715,23 @@ if (Test-Path (Join-Path $AppDir ".git")) {
 }
 
 Log-Info "Mengekstrak paket rilis Web Absensi ke $AppDir..."
-Expand-Archive -Path $webReleaseZip -DestinationPath $AppDir -Force
+$extractTemp = Join-Path $env:TEMP "jagat_web_install_ext"
+Remove-Item -Path $extractTemp -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -Path $webReleaseZip -DestinationPath $extractTemp -Force
+$srcFolder = Join-Path $extractTemp "release-client"
+if (-not (Test-Path $srcFolder)) { $srcFolder = $extractTemp }
+Copy-Item -Path "$srcFolder\*" -Destination $AppDir -Recurse -Force
+Remove-Item -Path $extractTemp -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path $webReleaseZip -Force -ErrorAction SilentlyContinue
+
+# Pembersihan jika ada folder release-client bersarang
+$nestedDir = Join-Path $AppDir "release-client"
+if (Test-Path $nestedDir) {
+    Get-ChildItem -Path $nestedDir -Force | ForEach-Object {
+        Move-Item -Path $_.FullName -Destination $AppDir -Force
+    }
+    Remove-Item -Path $nestedDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 if (Test-Path $envBackup) {
     Copy-Item $envBackup (Join-Path $AppDir ".env") -Force

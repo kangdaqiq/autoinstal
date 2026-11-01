@@ -287,6 +287,8 @@ switch ($Command.ToLower()) {
                     Remove-Item -Path $relExt -Recurse -Force -ErrorAction SilentlyContinue
                     Invoke-WebRequest -Uri $relUrl -OutFile $relZip -UseBasicParsing -TimeoutSec 120
                     Expand-Archive -Path $relZip -DestinationPath $relExt -Force
+                    $srcExtDir = Join-Path $relExt "release-client"
+                    if (-not (Test-Path $srcExtDir)) { $srcExtDir = $relExt }
                     $restFiles = @(
                         "storage\app\license_integrity.json",
                         "app\Services\LicenseService.php",
@@ -294,7 +296,7 @@ switch ($Command.ToLower()) {
                         "app\Http\Middleware\SelfHostedGuard.php"
                     )
                     foreach ($rf in $restFiles) {
-                        $srcRf = Join-Path $relExt $rf
+                        $srcRf = Join-Path $srcExtDir $rf
                         $dstRf = Join-Path $WebDir $rf
                         if (Test-Path $srcRf) {
                             $dstDir = Split-Path -Path $dstRf
@@ -376,8 +378,23 @@ switch ($Command.ToLower()) {
                         if (Test-Path (Join-Path $WebDir ".git")) {
                             Remove-Item -Path (Join-Path $WebDir ".git") -Recurse -Force -ErrorAction SilentlyContinue
                         }
-                        Expand-Archive -Path $webRelZip -DestinationPath $WebDir -Force
+                        $extractTemp = Join-Path $env:TEMP "jagat_web_update_ext"
+                        Remove-Item -Path $extractTemp -Recurse -Force -ErrorAction SilentlyContinue
+                        Expand-Archive -Path $webRelZip -DestinationPath $extractTemp -Force
+                        $srcFolder = Join-Path $extractTemp "release-client"
+                        if (-not (Test-Path $srcFolder)) { $srcFolder = $extractTemp }
+                        Copy-Item -Path "$srcFolder\*" -Destination $WebDir -Recurse -Force
+                        Remove-Item -Path $extractTemp -Recurse -Force -ErrorAction SilentlyContinue
                         Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
+                    }
+
+                    # Pembersihan otomatis jika sebelumnya ada folder release-client bersarang
+                    $nestedDir = Join-Path $WebDir "release-client"
+                    if (Test-Path $nestedDir) {
+                        Get-ChildItem -Path $nestedDir -Force | ForEach-Object {
+                            Move-Item -Path $_.FullName -Destination $WebDir -Force
+                        }
+                        Remove-Item -Path $nestedDir -Recurse -Force -ErrorAction SilentlyContinue
                     }
 
                     if (Test-Path $envBackup) {
