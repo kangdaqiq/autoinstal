@@ -411,10 +411,16 @@ switch ($Command.ToLower()) {
                 }
 
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
+                Remove-Item -Path (Join-Path $WebDir "bootstrap\cache\packages.php"), `
+                                 (Join-Path $WebDir "bootstrap\cache\services.php"), `
+                                 (Join-Path $WebDir "bootstrap\cache\config.php") -Force -ErrorAction SilentlyContinue
                 if (-not (Test-Path "vendor\sebastian\version") -and (Test-Path "vendor\nunomaduro\collision")) {
-                    Remove-Item -Path "vendor\nunomaduro", "vendor\phpunit", "vendor\sebastian" -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path "vendor\nunomaduro", "vendor\phpunit", "vendor\sebastian", "vendor\laravel\pail" -Recurse -Force -ErrorAction SilentlyContinue
                 }
                 composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+                Remove-Item -Path (Join-Path $WebDir "bootstrap\cache\packages.php"), `
+                                 (Join-Path $WebDir "bootstrap\cache\services.php"), `
+                                 (Join-Path $WebDir "bootstrap\cache\config.php") -Force -ErrorAction SilentlyContinue
                 & $PhpBin artisan package:discover --ansi 2>$null
                 
                 Write-Color "  - Menjalankan migrasi database..." Yellow
