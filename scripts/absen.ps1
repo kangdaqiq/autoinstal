@@ -394,7 +394,11 @@ switch ($Command.ToLower()) {
                 }
 
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
-                composer install --no-dev --optimize-autoloader --no-interaction
+                if (-not (Test-Path "vendor\sebastian\version") -and (Test-Path "vendor\nunomaduro\collision")) {
+                    Remove-Item -Path "vendor\nunomaduro", "vendor\phpunit", "vendor\sebastian" -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+                & $PhpBin artisan package:discover --ansi 2>$null
                 
                 Write-Color "  - Menjalankan migrasi database..." Yellow
                 & $PhpBin artisan migrate --force

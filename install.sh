@@ -812,7 +812,7 @@ deploy_web_absen() {
     # Jalankan Composer
     if [ -f composer.json ]; then
         export COMPOSER_ALLOW_SUPERUSER=1
-        run_task "Memasang dependensi PHP (composer install --no-dev)" "composer install --no-dev --optimize-autoloader --no-interaction"
+        run_task "Memasang dependensi PHP (composer install --no-dev)" "composer install --no-dev --optimize-autoloader --no-interaction --no-scripts && php artisan package:discover --ansi 2>/dev/null || true"
     fi
 
     # Artisan Commands (TANPA license:rehash karena license_integrity.json di release-client.zip sudah ber-signature Ed25519)
@@ -1432,7 +1432,19 @@ case "$1" in
 
             echo -e "${YELLOW}  • Memperbarui dependensi PHP (composer install)...${NC}"
             export COMPOSER_ALLOW_SUPERUSER=1
-            composer install --no-dev --optimize-autoloader --no-interaction
+
+            # Bersihkan sisa dev packages yang korup jika proses uninstall sebelumnya terinterupsi
+            if [ ! -d "vendor/sebastian/version" ] && [ -d "vendor/nunomaduro/collision" ]; then
+                rm -rf vendor/nunomaduro vendor/phpunit vendor/sebastian 2>/dev/null || true
+            fi
+
+            if ! composer install --no-dev --optimize-autoloader --no-interaction --no-scripts; then
+                echo -e "${YELLOW}  • Memulihkan autoloader paket dev yang terinterupsi...${NC}"
+                rm -rf vendor/nunomaduro vendor/phpunit vendor/sebastian 2>/dev/null || true
+                composer dump-autoload 2>/dev/null || true
+                composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+            fi
+            php artisan package:discover --ansi 2>/dev/null || true
 
             echo -e "${YELLOW}  • Menjalankan migrasi database...${NC}"
             php artisan migrate --force

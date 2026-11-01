@@ -781,7 +781,8 @@ if (Test-Path $envFile) {
 Push-Location $AppDir
 try {
     Log-Info "Menjalankan composer install..."
-    & $PhpExe -c "$currentIni" "$ComposerCmd" install --no-dev --optimize-autoloader --no-interaction
+    & $PhpExe -c "$currentIni" "$ComposerCmd" install --no-dev --optimize-autoloader --no-interaction --no-scripts
+    & $PhpExe -c "$currentIni" artisan package:discover --ansi 2>$null
 
     if ($LASTEXITCODE -ne 0) {
         throw "Composer install gagal (exit code: $LASTEXITCODE). Pastikan ekstensi PHP dan koneksi internet siap."
