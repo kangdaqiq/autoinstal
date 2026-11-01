@@ -321,48 +321,78 @@ switch ($Command.ToLower()) {
         Show-Header
         Write-Color "`n=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH (WINDOWS) ===" Yellow
 
-        # 1. Update Web Absensi (GitHub Release ZIP)
+        # 1. Update Web Absensi (Git Pull untuk Server Utama vs Release ZIP untuk Klien)
         if (Test-Path $WebDir) {
-            Write-Color "`n[1/3] Mengunduh rilis terbaru Web Absensi (release-client.zip)..." Cyan
             Push-Location $WebDir
             try {
-                $webRelUrl = "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
-                $webRelZip = Join-Path $env:TEMP "absen_update_client.zip"
-                $envBackup = Join-Path $env:TEMP "absen_env_update_backup"
-                $licBackup = Join-Path $env:TEMP "absen_lic_update_backup.json"
-
-                Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
-                Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
-                Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
-
-                if (Test-Path (Join-Path $WebDir ".env")) {
-                    Copy-Item (Join-Path $WebDir ".env") $envBackup -Force
-                }
-                if (Test-Path (Join-Path $WebDir "storage\app\license_cache.json")) {
-                    Copy-Item (Join-Path $WebDir "storage\app\license_cache.json") $licBackup -Force
-                }
-
-                Invoke-WebRequest -Uri $webRelUrl -OutFile $webRelZip -UseBasicParsing -TimeoutSec 300
-                if (Test-Path $webRelZip) {
-                    Write-Color "  - Mengekstrak paket rilis Web Absensi..." Yellow
-                    if (Test-Path (Join-Path $WebDir ".git")) {
-                        Remove-Item -Path (Join-Path $WebDir ".git") -Recurse -Force -ErrorAction SilentlyContinue
+                $appMode = ""
+                $envPath = Join-Path $WebDir ".env"
+                if (Test-Path $envPath) {
+                    $envLines = Get-Content $envPath
+                    foreach ($line in $envLines) {
+                        if ($line -match '^\s*APP_MODE\s*=\s*(.*)$') {
+                            $appMode = $matches[1].Trim().Trim('"').Trim("'").ToLower()
+                            break
+                        }
                     }
-                    Expand-Archive -Path $webRelZip -DestinationPath $WebDir -Force
-                    Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
                 }
 
-                if (Test-Path $envBackup) {
-                    Copy-Item $envBackup (Join-Path $WebDir ".env") -Force
+                if ($appMode -eq "hosted") {
+                    Write-Color "`n[1/3] Server Utama terdeteksi (APP_MODE=hosted). Memperbarui Web Absensi via Git Pull..." Cyan
+                    git config --global --add safe.directory $WebDir 2>$null
+                    if (Test-Path (Join-Path $WebDir ".git")) {
+                        git fetch --all --prune
+                        git pull origin main
+                        Write-Color "  ✔ Source code Web Absensi berhasil diperbarui via Git Pull!" Green
+                    } else {
+                        Write-Color "  - Inisialisasi repositori Git resmi..." Yellow
+                        git init
+                        git remote add origin https://github.com/kangdaqiq/absen_multi.git 2>$null
+                        git fetch origin main
+                        git reset --hard origin/main
+                        Write-Color "  ✔ Repositori Git berhasil dihubungkan & diperbarui!" Green
+                    }
+                } else {
+                    Write-Color "`n[1/3] Server Klien terdeteksi ($appMode). Mengunduh rilis resmi Web Absensi (release-client.zip)..." Cyan
+                    $webRelUrl = "https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+                    $webRelZip = Join-Path $env:TEMP "absen_update_client.zip"
+                    $envBackup = Join-Path $env:TEMP "absen_env_update_backup"
+                    $licBackup = Join-Path $env:TEMP "absen_lic_update_backup.json"
+
+                    Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
                     Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
-                }
-                if (Test-Path $licBackup) {
-                    $stApp = Join-Path $WebDir "storage\app"
-                    if (-not (Test-Path $stApp)) { New-Item -ItemType Directory -Path $stApp -Force | Out-Null }
-                    Copy-Item $licBackup (Join-Path $stApp "license_cache.json") -Force
                     Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
+
+                    if (Test-Path (Join-Path $WebDir ".env")) {
+                        Copy-Item (Join-Path $WebDir ".env") $envBackup -Force
+                    }
+                    if (Test-Path (Join-Path $WebDir "storage\app\license_cache.json")) {
+                        Copy-Item (Join-Path $WebDir "storage\app\license_cache.json") $licBackup -Force
+                    }
+
+                    Invoke-WebRequest -Uri $webRelUrl -OutFile $webRelZip -UseBasicParsing -TimeoutSec 300
+                    if (Test-Path $webRelZip) {
+                        Write-Color "  - Mengekstrak paket rilis Web Absensi..." Yellow
+                        if (Test-Path (Join-Path $WebDir ".git")) {
+                            Remove-Item -Path (Join-Path $WebDir ".git") -Recurse -Force -ErrorAction SilentlyContinue
+                        }
+                        Expand-Archive -Path $webRelZip -DestinationPath $WebDir -Force
+                        Remove-Item -Path $webRelZip -Force -ErrorAction SilentlyContinue
+                    }
+
+                    if (Test-Path $envBackup) {
+                        Copy-Item $envBackup (Join-Path $WebDir ".env") -Force
+                        Remove-Item -Path $envBackup -Force -ErrorAction SilentlyContinue
+                    }
+                    if (Test-Path $licBackup) {
+                        $stApp = Join-Path $WebDir "storage\app"
+                        if (-not (Test-Path $stApp)) { New-Item -ItemType Directory -Path $stApp -Force | Out-Null }
+                        Copy-Item $licBackup (Join-Path $stApp "license_cache.json") -Force
+                        Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
+                    }
+                    Write-Color "  ✔ Paket rilis Web Absensi berhasil diperbarui!" Green
                 }
-                
+
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
                 composer install --no-dev --optimize-autoloader --no-interaction
                 

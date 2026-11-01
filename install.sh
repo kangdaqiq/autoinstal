@@ -1379,36 +1379,55 @@ case "$1" in
     update)
         echo -e "${CYAN}${BOLD}=== MEMULAI UPDATE SISTEM ABSENSI JAGAT TECH ===${NC}"
         
-        # 1. Update Web Absensi dari Release ZIP Resmi (release-client.zip)
+        # 1. Update Web Absensi (Git Pull untuk Server Utama vs Release ZIP untuk Klien)
         if [ -d "$APP_DIR" ]; then
-            echo -e "${YELLOW}▶ [1/3] Mengunduh paket rilis terbaru Web Absen (release-client.zip)...${NC}"
             cd "$APP_DIR" || exit 1
-            web_zip_url="https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
-            tmp_web_zip="/tmp/release-client.zip"
-            tmp_web_ext="/tmp/release_web_extract"
-            rm -rf "$tmp_web_zip" "$tmp_web_ext"
-            mkdir -p "$tmp_web_ext"
+            app_mode=$(grep -E '^\s*APP_MODE=' "$APP_DIR/.env" 2>/dev/null | head -n1 | cut -d '=' -f2 | tr -d '"'\'' ' || echo "")
 
-            if curl -sSL -f "$web_zip_url" -o "$tmp_web_zip" && unzip -q -o "$tmp_web_zip" -d "$tmp_web_ext"; then
-                src_dir="$tmp_web_ext/release-client"
-                [ ! -d "$src_dir" ] && src_dir="$tmp_web_ext"
-
-                # Backup sementara konfigurasi .env dan cache lisensi lokal client
-                [ -f "$APP_DIR/.env" ] && cp -f "$APP_DIR/.env" "/tmp/jagat_env.bak"
-                [ -f "$APP_DIR/storage/app/license_cache.json" ] && cp -f "$APP_DIR/storage/app/license_cache.json" "/tmp/jagat_lic_cache.bak"
-
-                echo -e "${YELLOW}  • Menyalin file rilis terbaru (termasuk signed license_integrity.json)...${NC}"
-                cp -rf "$src_dir/." "$APP_DIR/"
-                rm -rf "$APP_DIR/.git" 2>/dev/null || true
-
-                # Kembalikan .env dan cache lisensi lokal client
-                [ -f "/tmp/jagat_env.bak" ] && mv -f "/tmp/jagat_env.bak" "$APP_DIR/.env"
-                [ -f "/tmp/jagat_lic_cache.bak" ] && mv -f "/tmp/jagat_lic_cache.bak" "$APP_DIR/storage/app/license_cache.json"
-                rm -rf "$tmp_web_zip" "$tmp_web_ext"
-                echo -e "${GREEN}  ✔ Paket rilis Web Absen berhasil diperbarui!${NC}"
+            if [ "$app_mode" = "hosted" ]; then
+                echo -e "${YELLOW}▶ [1/3] Server Utama terdeteksi (APP_MODE=hosted). Memperbarui Web Absen via Git Pull...${NC}"
+                git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+                if [ -d "$APP_DIR/.git" ]; then
+                    git fetch --all --prune
+                    git pull origin main || git pull origin master
+                    echo -e "${GREEN}  ✔ Source code Web Absen berhasil diperbarui via Git Pull!${NC}"
+                else
+                    echo -e "${YELLOW}  • Menginisialisasi repositori Git resmi ke ${APP_DIR}...${NC}"
+                    git init
+                    git remote add origin https://github.com/kangdaqiq/absen_multi.git 2>/dev/null || git remote set-url origin https://github.com/kangdaqiq/absen_multi.git
+                    git fetch origin main
+                    git reset --hard origin/main
+                    echo -e "${GREEN}  ✔ Repositori Git berhasil dihubungkan & diperbarui!${NC}"
+                fi
             else
-                echo -e "${RED}  ✗ Gagal mengunduh release-client.zip dari GitHub Releases.${NC}"
+                echo -e "${YELLOW}▶ [1/3] Server Klien terdeteksi (${app_mode:-self_hosted}). Mengunduh paket rilis resmi Web Absen (release-client.zip)...${NC}"
+                web_zip_url="https://github.com/kangdaqiq/absen_multi/releases/latest/download/release-client.zip"
+                tmp_web_zip="/tmp/release-client.zip"
+                tmp_web_ext="/tmp/release_web_extract"
                 rm -rf "$tmp_web_zip" "$tmp_web_ext"
+                mkdir -p "$tmp_web_ext"
+
+                if curl -sSL -f "$web_zip_url" -o "$tmp_web_zip" && unzip -q -o "$tmp_web_zip" -d "$tmp_web_ext"; then
+                    src_dir="$tmp_web_ext/release-client"
+                    [ ! -d "$src_dir" ] && src_dir="$tmp_web_ext"
+
+                    # Backup sementara konfigurasi .env dan cache lisensi lokal client
+                    [ -f "$APP_DIR/.env" ] && cp -f "$APP_DIR/.env" "/tmp/jagat_env.bak"
+                    [ -f "$APP_DIR/storage/app/license_cache.json" ] && cp -f "$APP_DIR/storage/app/license_cache.json" "/tmp/jagat_lic_cache.bak"
+
+                    echo -e "${YELLOW}  • Menyalin file rilis terbaru (termasuk signed license_integrity.json)...${NC}"
+                    cp -rf "$src_dir/." "$APP_DIR/"
+                    rm -rf "$APP_DIR/.git" 2>/dev/null || true
+
+                    # Kembalikan .env dan cache lisensi lokal client
+                    [ -f "/tmp/jagat_env.bak" ] && mv -f "/tmp/jagat_env.bak" "$APP_DIR/.env"
+                    [ -f "/tmp/jagat_lic_cache.bak" ] && mv -f "/tmp/jagat_lic_cache.bak" "$APP_DIR/storage/app/license_cache.json"
+                    rm -rf "$tmp_web_zip" "$tmp_web_ext"
+                    echo -e "${GREEN}  ✔ Paket rilis Web Absen berhasil diperbarui!${NC}"
+                else
+                    echo -e "${RED}  ✗ Gagal mengunduh release-client.zip dari GitHub Releases.${NC}"
+                    rm -rf "$tmp_web_zip" "$tmp_web_ext"
+                fi
             fi
 
             echo -e "${YELLOW}  • Memperbarui dependensi PHP (composer install)...${NC}"
