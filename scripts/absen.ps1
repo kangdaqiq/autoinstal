@@ -345,14 +345,14 @@ switch ($Command.ToLower()) {
                     if (Test-Path (Join-Path $WebDir ".git")) {
                         git fetch --all --prune
                         git pull origin main
-                        Write-Color "  ✔ Source code Web Absensi berhasil diperbarui via Git Pull!" Green
+                        Write-Color "  [OK] Source code Web Absensi berhasil diperbarui via Git Pull!" Green
                     } else {
                         Write-Color "  - Inisialisasi repositori Git resmi..." Yellow
                         git init
                         git remote add origin https://github.com/kangdaqiq/absen_multi.git 2>$null
                         git fetch origin main
                         git reset --hard origin/main
-                        Write-Color "  ✔ Repositori Git berhasil dihubungkan & diperbarui!" Green
+                        Write-Color "  [OK] Repositori Git berhasil dihubungkan & diperbarui!" Green
                     }
                 } else {
                     Write-Color "`n[1/3] Server Klien terdeteksi ($appMode). Mengunduh rilis resmi Web Absensi (release-client.zip)..." Cyan
@@ -407,7 +407,7 @@ switch ($Command.ToLower()) {
                         Copy-Item $licBackup (Join-Path $stApp "license_cache.json") -Force
                         Remove-Item -Path $licBackup -Force -ErrorAction SilentlyContinue
                     }
-                    Write-Color "  ✔ Paket rilis Web Absensi berhasil diperbarui!" Green
+                    Write-Color "  [OK] Paket rilis Web Absensi berhasil diperbarui!" Green
                 }
 
                 Write-Color "  - Memperbarui dependensi PHP (composer install)..." Yellow
